@@ -9,7 +9,7 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | Phase 1 | Core Data Structures | ✅ Complete |
-| Phase 2 | Encoding System | ⬜ Not Started |
+| Phase 2 | Encoding System | 🟨 In Progress |
 | Phase 3 | Strength & Decay | ⬜ Not Started |
 | Phase 4 | Reconstruction Engine | ⬜ Not Started |
 | Phase 5 | Constraints System | ⬜ Not Started |
@@ -33,14 +33,14 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 - [x] Write unit tests for Fragment serialization roundtrip
 
 ### 1.2 Strand Implementation
-- [ ] Define `Strand` dataclass
-- [ ] Implement serialization/deserialization
-- [ ] Write unit tests
+- [x] Define `Strand` dataclass
+- [x] Implement serialization/deserialization
+- [x] Write unit tests
 
 ### 1.3 Query Implementation
-- [ ] Define `Query` dataclass with semantic, temporal, domain filters
-- [ ] Implement query hashing for variance tracking
-- [ ] Write unit tests
+- [x] Define `Query` dataclass with semantic, temporal, domain filters
+- [x] Implement query hashing for variance tracking
+- [x] Write unit tests
 
 ### 1.4 Fragment Store
 - [x] Design SQLite schema for fragments
@@ -62,44 +62,44 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 - [x] Document any issues or improvements needed
 
 ### 1.6 Phase 1 Review
-- [ ] Code review for Phase 1
-- [ ] Refactor if needed
-- [ ] Update spec.md if implementation diverged
-- [ ] Mark Phase 1 complete in overview table
+- [x] Code review for Phase 1
+- [x] Refactor if needed (none needed)
+- [x] Update spec.md if implementation diverged (aligned)
+- [x] Mark Phase 1 complete in overview table
 
 ---
 
 ## Phase 2: Encoding System
 
 ### 2.1 Experience Input
-- [ ] Define `Experience` dataclass (text, sensory, emotional, etc.)
-- [ ] Define `Context` dataclass (current state, goals, sequence)
-- [ ] Write unit tests
+- [x] Define `Experience` dataclass (text, sensory, emotional, etc.)
+- [x] Define `Context` dataclass (current state, goals, sequence)
+- [x] Write unit tests
 
 ### 2.2 Feature Extraction
-- [ ] Implement `extract_semantic_features(text)` → embedding
-- [ ] Choose/integrate embedding model (e.g., sentence-transformers)
-- [ ] Implement `extract_emotional_features(input)` → valence/arousal/dominance
-- [ ] Implement `extract_temporal_features(context)` → position, timestamp
-- [ ] Write unit tests for each extractor
+- [x] Implement `extract_semantic_features(text)` → embedding
+- [x] Choose/integrate embedding model (e.g., sentence-transformers)
+- [x] Implement `extract_emotional_features(input)` → valence/arousal/dominance
+- [x] Implement `extract_temporal_features(context)` → position, timestamp
+- [x] Write unit tests for each extractor
 
 ### 2.3 Salience Calculation
-- [ ] Implement `calculate_encoding_salience(emotional, novelty, goal, depth)`
-- [ ] Implement `calculate_novelty(content, existing_fragments)`
-- [ ] Implement `calculate_goal_relevance(content, active_goals)`
-- [ ] Make weights configurable
-- [ ] Write unit tests with known inputs/outputs
-- [ ] Test edge cases (no existing fragments, no goals, etc.)
+- [x] Implement `calculate_encoding_salience(emotional, novelty, goal, depth)`
+- [x] Implement `calculate_novelty(content, existing_fragments)`
+- [x] Implement `calculate_goal_relevance(content, active_goals)`
+- [x] Make weights configurable
+- [x] Write unit tests with known inputs/outputs
+- [x] Test edge cases (no existing fragments, no goals, etc.)
 
 ### 2.4 Binding Creation
-- [ ] Implement `find_temporal_bindings(fragment, context)`
-- [ ] Implement `create_binding(fragment_a, fragment_b)`
-- [ ] Write unit tests
+- [x] Implement `find_temporal_bindings(fragment, context)`
+- [x] Implement `create_binding(fragment_a, fragment_b)`
+- [x] Write unit tests
 
 ### 2.5 Full Encode Function
-- [ ] Implement `encode(experience, context) → Fragment`
-- [ ] Integration test: encode experience → verify fragment fields
-- [ ] Integration test: encode multiple experiences → verify bindings
+- [x] Implement `encode(experience, context) → Fragment`
+- [x] Integration test: encode experience → verify fragment fields
+- [x] Integration test: encode multiple experiences → verify bindings
 
 ### 2.6 Phase 2 Testing Cycle
 - [ ] Run all Phase 2 unit tests
