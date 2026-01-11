@@ -96,7 +96,8 @@ class Strand:
     fragments: list[str] = field(default_factory=list)  # Fragment IDs
     assembly_context: dict[str, Any] = field(default_factory=dict)  # Context at reconstruction time
     coherence_score: float = 0.0  # How internally consistent (0-1)
-    variance: float = 0.0  # Reconstruction stability measure
+    variance: float = 0.0  # Reconstruction stability measure (target variance)
+    certainty: float = 0.0  # Calculated subjective certainty (0-1)
     created_at: float = field(default_factory=time.time)
     
     def to_dict(self) -> dict[str, Any]:
@@ -106,7 +107,9 @@ class Strand:
             "fragments": self.fragments,
             "assembly_context": self.assembly_context,
             "coherence_score": self.coherence_score,
+            "coherence_score": self.coherence_score,
             "variance": self.variance,
+            "certainty": self.certainty,
             "created_at": self.created_at
         }
     
@@ -119,6 +122,7 @@ class Strand:
             assembly_context=data["assembly_context"],
             coherence_score=data["coherence_score"],
             variance=data["variance"],
+            certainty=data.get("certainty", 0.0),
             created_at=data["created_at"]
         )
 

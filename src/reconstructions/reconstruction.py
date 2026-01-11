@@ -342,11 +342,14 @@ def fill_gaps(
     return fragments
 
 
+from .certainty import VarianceController
+
 def reconstruct(
     query: Query,
     store: FragmentStore,
     variance_target: float = 0.3,
-    config: Optional[ReconstructionConfig] = None
+    config: Optional[ReconstructionConfig] = None,
+    variance_controller: Optional[VarianceController] = None
 ) -> Strand:
     """
     Reconstruct memory from query.
@@ -358,6 +361,7 @@ def reconstruct(
         store: Fragment store
         variance_target: Target variance (0=deterministic, 1=random)
         config: Optional configuration
+        variance_controller: Optional controller for tracking certainty
         
     Returns:
         Reconstructed strand
@@ -385,12 +389,23 @@ def reconstruct(
     coherence = calculate_coherence(filled)
     
     # Step 6: Create strand
+    certainty = 0.0
+    
+    # Calculate initial strand (needed for variance calculation)
     strand = Strand(
         fragments=[f.id for f in filled],
         assembly_context=assembly_context,
         coherence_score=coherence,
-        variance=variance_target
+        variance=variance_target,
+        certainty=0.0  # Placeholder
     )
+    
+    # Calculate certainty if controller available
+    if variance_controller:
+        query_hash = query.to_hash()
+        variance_controller.record_reconstruction(query_hash, strand)
+        certainty = variance_controller.get_certainty(query_hash)
+        strand.certainty = certainty
     
     # Record access for rehearsal
     import time as time_module
