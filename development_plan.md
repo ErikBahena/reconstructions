@@ -9,8 +9,8 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | Phase 1 | Core Data Structures | ✅ Complete |
-| Phase 2 | Encoding System | 🟨 In Progress |
-| Phase 3 | Strength & Decay | ⬜ Not Started |
+| Phase 2 | Encoding System | ✅ Complete |
+| Phase 3 | Strength & Decay | ✅ Complete |
 | Phase 4 | Reconstruction Engine | ⬜ Not Started |
 | Phase 5 | Constraints System | ⬜ Not Started |
 | Phase 6 | Identity Model | ⬜ Not Started |
@@ -102,56 +102,56 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 - [x] Integration test: encode multiple experiences → verify bindings
 
 ### 2.6 Phase 2 Testing Cycle
-- [ ] Run all Phase 2 unit tests
-- [ ] Run integration tests
-- [ ] Manual test: encode various experiences
-- [ ] Verify salience values make sense
-- [ ] Verify bindings are created correctly
-- [ ] Document issues
+- [x] Run all Phase 2 unit tests
+- [x] Run integration tests
+- [x] Manual test: encode various experiences
+- [x] Verify salience values make sense
+- [x] Verify bindings are created correctly
+- [x] Document issues
 
 ### 2.7 Phase 2 Review
-- [ ] Code review
-- [ ] Refactor salience formula if needed
-- [ ] Update spec.md if needed
-- [ ] Mark Phase 2 complete
+- [x] Code review
+- [x] Refactor salience formula if needed (none needed)
+- [x] Update spec.md if needed (aligned)
+- [x] Mark Phase 2 complete
 
 ---
 
 ## Phase 3: Strength & Decay
 
 ### 3.1 Access Logging
-- [ ] Implement `FragmentStore.record_access(fragment_id, timestamp)`
-- [ ] Update Fragment schema to store access log
-- [ ] Write unit tests
+- [x] Implement `FragmentStore.record_access(fragment_id, timestamp)` (already done in Phase 1)
+- [x] Update Fragment schema to store access log (already done)
+- [x] Write unit tests (already done)
 
 ### 3.2 Decay Function
-- [ ] Implement power law decay formula
-- [ ] Make `DECAY_RATE` configurable
-- [ ] Write unit tests with known decay curves
+- [x] Implement power law decay formula
+- [x] Make `DECAY_RATE` configurable
+- [x] Write unit tests with known decay curves
 
 ### 3.3 Rehearsal Bonus
-- [ ] Implement rehearsal contribution to strength
-- [ ] Write unit tests
+- [x] Implement rehearsal contribution to strength
+- [x] Write unit tests
 
 ### 3.4 Strength Calculation
-- [ ] Implement `calculate_strength(fragment, now) → float`
-- [ ] Test: new fragment has high strength
-- [ ] Test: old fragment with no access has low strength
-- [ ] Test: old fragment with many accesses maintains strength
-- [ ] Test: decay curve matches expected power law
+- [x] Implement `calculate_strength(fragment, now) → float`
+- [x] Test: new fragment has high strength
+- [x] Test: old fragment with no access has low strength
+- [x] Test: old fragment with many accesses maintains strength
+- [x] Test: decay curve matches expected power law
 
 ### 3.5 Phase 3 Testing Cycle
-- [ ] Run all unit tests
-- [ ] Simulation test: create fragments, simulate time passage, verify decay
-- [ ] Simulation test: access fragments, verify strength increase
-- [ ] Plot decay curves to visually verify
-- [ ] Document issues
+- [x] Run all unit tests
+- [x] Simulation test: create fragments, simulate time passage, verify decay
+- [x] Simulation test: access fragments, verify strength increase
+- [x] Plot decay curves to visually verify (simulate_decay_curve function)
+- [x] Document issues (none found)
 
 ### 3.6 Phase 3 Review
-- [ ] Code review
-- [ ] Tune decay rate if needed
-- [ ] Update spec.md if needed
-- [ ] Mark Phase 3 complete
+- [x] Code review
+- [x] Tune decay rate if needed (defaults are good)
+- [x] Update spec.md if needed (aligned)
+- [x] Mark Phase 3 complete
 
 ---
 
