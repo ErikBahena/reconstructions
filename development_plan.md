@@ -12,7 +12,7 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 | Phase 2 | Encoding System | ✅ Complete |
 | Phase 3 | Strength & Decay | ✅ Complete |
 | Phase 4 | Reconstruction Engine | ✅ Complete |
-| Phase 5 | Constraints System | ⬜ Not Started |
+| Phase 5 | Constraints System | ✅ Complete |
 | Phase 6 | Identity Model | ⬜ Not Started |
 | Phase 7 | Variance & Certainty | ⬜ Not Started |
 | Phase 8 | Main Loop & Goals | ⬜ Not Started |
@@ -210,41 +210,41 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 ## Phase 5: Constraints System
 
 ### 5.1 Constraint Data Structures
-- [ ] Define `Constraint` base class
-- [ ] Define `HardConstraint` subclass
-- [ ] Define `SoftConstraint` subclass
-- [ ] Define `ConstraintSet` container
-- [ ] Write unit tests
+- [x] Define `Constraint` base class
+- [x] Define `HardConstraint` subclass (ConstraintType.HARD)
+- [x] Define `SoftConstraint` subclass (ConstraintType.SOFT)
+- [x] Define `ConstraintSet` container
+- [x] Write unit tests
 
 ### 5.2 Coherence Checking
-- [ ] Implement `calculate_coherence(assembly) → float`
-- [ ] Implement contradiction detection
-- [ ] Write unit tests
+- [x] Implement `calculate_coherence(assembly) → float`
+- [x] Implement contradiction detection
+- [x] Write unit tests
 
 ### 5.3 Built-in Constraints
-- [ ] Implement `NoContradictionConstraint`
-- [ ] Implement `TemporalConsistencyConstraint`
-- [ ] Implement `IdentityConstraint` (placeholder, full impl in Phase 6)
-- [ ] Write unit tests for each
+- [x] Implement `NoContradictionConstraint`
+- [x] Implement `TemporalConsistencyConstraint`
+- [x] Implement `CoherenceConstraint`
+- [x] Write unit tests for each
 
 ### 5.4 Constraint Application
-- [ ] Implement `apply_constraints(assembly, constraints, context) → Assembly`
-- [ ] Test: hard constraint violation → correction applied
-- [ ] Test: soft constraint violation → penalty tracked
-- [ ] Test: assembly passes constraints → unchanged
+- [x] Implement `apply_constraints(assembly, constraints, context) → Assembly`
+- [x] Test: hard constraint violation → correction applied
+- [x] Test: soft constraint violation → penalty tracked
+- [x] Test: assembly passes constraints → unchanged
 
 ### 5.5 Phase 5 Testing Cycle
-- [ ] Run all unit tests
-- [ ] Integration test: reconstruct with constraints
-- [ ] Create test cases with known contradictions
-- [ ] Verify constraints catch and correct issues
-- [ ] Document constraint effectiveness
+- [x] Run all unit tests
+- [x] Integration test: reconstruct with constraints
+- [x] Create test cases with known contradictions
+- [x] Verify constraints catch and correct issues
+- [x] Document constraint effectiveness
 
 ### 5.6 Phase 5 Review
-- [ ] Code review
-- [ ] Add/remove constraints based on testing
-- [ ] Update spec.md if needed
-- [ ] Mark Phase 5 complete
+- [x] Code review
+- [x] Add/remove constraints based on testing
+- [x] Update spec.md if needed (aligned)
+- [x] Mark Phase 5 complete
 
 ---
 
