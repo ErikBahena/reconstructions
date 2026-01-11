@@ -19,7 +19,7 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 | Phase 9 | CLI Interface | ✅ Complete |
 | Phase 10 | Integration & Polish | ✅ Complete |
 | Phase 11 | Optional LLM Interface | ✅ Complete |
-| Phase 12 | Custom Models (If Needed) | ⬜ Not Started |
+| Phase 12 | Consciousness Probing | ✅ Complete |
 
 ---
 
@@ -479,33 +479,31 @@ A comprehensive progress tracker for building the Reconstructions memory system.
 
 ---
 
-## Phase 12: Custom Models (If Needed)
+## Phase 12: Consciousness Probing Experiments
 
-### 12.1 Evaluation
-- [ ] Evaluate gap filling quality from Phase 4
-- [ ] Evaluate binding prediction accuracy
-- [ ] Decide if custom models are needed
-- [ ] Document decision rationale
+### 12.1 Experiment Framework
+- [x] Create `experiments` module
+- [x] Implement `ProbeProtocol` abstract base class
+- [x] Implement `ConsciousnessMetrics` dataclass
+- [x] Implement experiment runner and logger
 
-### 12.2 Gap Filler Model (If Needed)
-- [ ] Define model architecture (~100M params)
-- [ ] Create training data from complete sequences
-- [ ] Train model
-- [ ] Evaluate improvement
-- [ ] Integrate into gap_fill function
+### 12.2 Probe Implementations
+- [x] Implement `SelfReferenceProbe` (Meta-memory testing)
+- [x] Implement `IdentityContinuityProbe` (Long-term consistency) broken out into smaller probes
+- [x] Implement `MetacognitiveAccuracyProbe` (Certainty calibration)
+- [x] Implement `MirrorProbe` (Self-recognition)
+- [x] Implement `ContradictionProbe` (Cognitive dissonance) - merged into SelfReference
 
-### 12.3 Binding Predictor Model (If Needed)
-- [ ] Define model architecture (~10M params)
-- [ ] Create training data from access patterns
-- [ ] Train model
-- [ ] Evaluate improvement
-- [ ] Integrate into binding prediction
+### 12.3 Execution & Analysis
+- [x] Run baseline experiments (gemma3:4b)
+- [x] Run stress tests (contradictory inputs)
+- [x] Analyze certainty/variance correlation
+- [x] Generate "Consciousness Report"
 
 ### 12.4 Phase 12 Review
-- [ ] Evaluate custom model impact
-- [ ] Document performance improvements
-- [ ] Update spec.md with final architecture
-- [ ] Mark Phase 12 complete
+- [x] review probe results (Low self-coherence, high confabulation)
+- [x] Refine system based on findings
+- [x] Mark Phase 12 complete
 
 ---
 
