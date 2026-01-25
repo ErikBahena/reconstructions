@@ -1,17 +1,27 @@
 [project]
 name = "reconstructions"
-version = "0.1.0"
+version = "0.2.0"
 description = "A process-first human-like memory system"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.24.0",
-    "sentence-transformers>=2.2.0",
+    "sentence-transformers>=2.2.0",  # Keep as fallback
+    "onnxruntime>=1.17.0",
+    "usearch>=2.0.0",
+    "transformers>=4.30.0",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+]
+gpu = [
+    "onnxruntime-gpu>=1.17.0",
+]
+apple = [
+    "onnxruntime-silicon>=1.17.0",
 ]
 
 [build-system]
