@@ -4,8 +4,8 @@ Unit tests for feature extraction.
 
 import pytest
 import numpy as np
-from src.reconstructions.encoding import Experience, Context
-from src.reconstructions.features import (
+from reconstructions.encoding import Experience, Context
+from reconstructions.features import (
     extract_semantic_features,
     extract_emotional_features,
     extract_temporal_features,
@@ -48,9 +48,24 @@ class TestSemanticExtraction:
         text = "Consistent text"
         emb1 = extract_semantic_features(text)
         emb2 = extract_semantic_features(text)
-        
+
         # Should be identical (deterministic)
         np.testing.assert_array_almost_equal(emb1, emb2)
+
+    def test_extract_semantic_features_is_fast(self):
+        """Semantic extraction completes in under 50ms."""
+        import time
+
+        # Warm up
+        extract_semantic_features("warmup text")
+
+        start = time.perf_counter()
+        result = extract_semantic_features("test the embedding speed")
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        assert elapsed_ms < 50, f"Extraction took {elapsed_ms:.1f}ms"
+        assert result is not None
+        assert len(result) == 384
 
 
 class TestEmotionalExtraction:

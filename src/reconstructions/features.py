@@ -7,53 +7,87 @@ from typing import Optional, List
 from .encoding import Experience, Context
 
 
-# Global embedding model (lazy loaded)
-_embedding_model = None
+# Global embedder (lazy loaded)
+_embedder = None
+_embedder_type = None  # 'fast', 'sentence_transformers', or 'fallback'
 
 
-def get_embedding_model():
+def get_embedder():
     """
-    Get or load the embedding model.
-    
-    Uses sentence-transformers with a small, efficient model.
+    Get or load the embedder.
+
+    Prefers FastEmbedder (ONNX), falls back to sentence-transformers,
+    then to hash-based fallback.
     Lazy loaded to avoid startup overhead.
+
+    Returns:
+        Tuple of (embedder, type) where type is 'fast', 'sentence_transformers', or 'fallback'
     """
-    global _embedding_model
-    
-    if _embedding_model is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            # Using all-MiniLM-L6-v2: small (80MB), fast, good quality
-            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        except ImportError:
-            # Fallback: return None if sentence-transformers not available
-            _embedding_model = None
-    
-    return _embedding_model
+    global _embedder, _embedder_type
+
+    if _embedder is not None:
+        return _embedder, _embedder_type
+
+    # Try FastEmbedder first (ONNX-based, fastest)
+    try:
+        from .fast_embedder import FastEmbedder
+        _embedder = FastEmbedder()
+        _embedder_type = 'fast'
+        return _embedder, _embedder_type
+    except Exception:
+        pass
+
+    # Fall back to sentence-transformers
+    try:
+        from sentence_transformers import SentenceTransformer
+        _embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        _embedder_type = 'sentence_transformers'
+        return _embedder, _embedder_type
+    except Exception:
+        pass
+
+    # No embedder available, will use hash fallback
+    _embedder_type = 'fallback'
+    return None, _embedder_type
 
 
 def extract_semantic_features(text: str) -> Optional[np.ndarray]:
     """
     Extract semantic features from text using embeddings.
-    
+
+    Uses FastEmbedder (ONNX) for speed, falls back to sentence-transformers
+    or hash-based pseudo-embeddings if unavailable.
+
     Args:
         text: Input text to encode
-        
+
     Returns:
-        Embedding vector as numpy array, or None if model unavailable
+        Embedding vector as numpy array, or None if text is empty
     """
     if not text or len(text.strip()) == 0:
         return None
-    
-    model = get_embedding_model()
-    if model is None:
-        # Fallback: create a simple hash-based pseudo-embedding
-        # This is NOT semantically meaningful, just for testing
-        return _fallback_text_embedding(text)
-    
-    # Generate embedding
-    embedding = model.encode(text, convert_to_numpy=True)
-    return embedding.astype(np.float32)
+
+    embedder, embedder_type = get_embedder()
+
+    if embedder_type == 'fast':
+        # Use FastEmbedder
+        try:
+            return embedder.embed(text)
+        except Exception:
+            # Fall through to fallback
+            pass
+    elif embedder_type == 'sentence_transformers':
+        # Use sentence-transformers
+        try:
+            embedding = embedder.encode(text, convert_to_numpy=True)
+            return embedding.astype(np.float32)
+        except Exception:
+            # Fall through to fallback
+            pass
+
+    # Fallback: create a simple hash-based pseudo-embedding
+    # This is NOT semantically meaningful, just for testing
+    return _fallback_text_embedding(text)
 
 
 def _fallback_text_embedding(text: str, dim: int = 384) -> np.ndarray:
