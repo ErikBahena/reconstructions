@@ -13,27 +13,44 @@ from .core import Fragment
 class FragmentStore:
     """
     Persistent storage for fragments.
-    
-    Uses SQLite for structured data and in-memory numpy arrays
-    for vector embeddings (semantic search).
+
+    Uses SQLite for structured data and VectorIndex for fast
+    semantic similarity search (falls back to in-memory dict if unavailable).
     """
-    
+
     def __init__(self, db_path: str):
         """
         Initialize fragment store.
-        
+
         Args:
             db_path: Path to SQLite database file
         """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         self.conn = sqlite3.connect(str(self.db_path))
         self.conn.row_factory = sqlite3.Row
-        
-        # In-memory vector storage (will scale this later)
+
+        # Try to use VectorIndex for fast similarity search
+        self._use_vector_index = False
+        self._vector_index = None
+        self._vector_index_path = self.db_path.with_suffix(".vectors")
+
+        try:
+            from .vector_index import VectorIndex
+            self._vector_index = VectorIndex()
+            self._use_vector_index = True
+
+            # Load existing index if available
+            if self._vector_index_path.with_suffix(".usearch").exists():
+                self._vector_index.load(self._vector_index_path)
+        except ImportError:
+            # Fall back to in-memory dict
+            pass
+
+        # In-memory vector storage (fallback when VectorIndex unavailable)
         self.embeddings: dict[str, np.ndarray] = {}
-        
+
         self._init_schema()
     
     def _init_schema(self):
@@ -96,10 +113,20 @@ class FragmentStore:
         ))
         
         self.conn.commit()
-        
+
         # Extract and store embedding if present
         if "semantic" in fragment.content and isinstance(fragment.content["semantic"], list):
-            self.embeddings[fragment.id] = np.array(fragment.content["semantic"], dtype=np.float32)
+            embedding = np.array(fragment.content["semantic"], dtype=np.float32)
+
+            if self._use_vector_index and self._vector_index is not None:
+                # Use VectorIndex for fast search (requires 384-dim vectors)
+                if len(embedding) == 384:
+                    self._vector_index.add(fragment.id, embedding)
+                else:
+                    # Fall back to in-memory for non-standard dimensions
+                    self.embeddings[fragment.id] = embedding
+            else:
+                self.embeddings[fragment.id] = embedding
     
     def get(self, fragment_id: str) -> Optional[Fragment]:
         """
@@ -153,11 +180,14 @@ class FragmentStore:
         """, (fragment_id,))
         
         self.conn.commit()
-        
+
         # Remove embedding if exists
+        if self._use_vector_index and self._vector_index is not None:
+            self._vector_index.remove(fragment_id)
+
         if fragment_id in self.embeddings:
             del self.embeddings[fragment_id]
-        
+
         return cursor.rowcount > 0
     
     def find_by_time_range(self, start: float, end: float) -> List[Fragment]:
@@ -233,30 +263,43 @@ class FragmentStore:
     def find_similar_semantic(self, embedding: np.ndarray, top_k: int = 10) -> List[tuple[str, float]]:
         """
         Find fragments with similar semantic embeddings.
-        
+
+        Uses VectorIndex for fast HNSW search when available,
+        falls back to brute-force otherwise.
+
         Args:
             embedding: Query embedding vector
             top_k: Number of results to return
-            
+
         Returns:
             List of (fragment_id, similarity_score) tuples
         """
+        # Try VectorIndex first (fast path for 384-dim vectors)
+        if (
+            self._use_vector_index
+            and self._vector_index is not None
+            and self._vector_index.count() > 0
+            and len(embedding) == 384
+        ):
+            return self._vector_index.search(embedding, limit=top_k)
+
+        # Fall back to brute-force search
         if len(self.embeddings) == 0:
             return []
-        
+
         # Normalize query embedding
         query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
-        
+
         # Compute cosine similarity with all stored embeddings
         similarities = []
         for fid, stored_emb in self.embeddings.items():
             stored_norm = stored_emb / (np.linalg.norm(stored_emb) + 1e-8)
             similarity = np.dot(query_norm, stored_norm)
             similarities.append((fid, float(similarity)))
-        
+
         # Sort by similarity (highest first)
         similarities.sort(key=lambda x: x[1], reverse=True)
-        
+
         return similarities[:top_k]
     
     def record_access(self, fragment_id: str, timestamp: float) -> None:
@@ -287,7 +330,12 @@ class FragmentStore:
         return row["count"] == 0
     
     def close(self):
-        """Close database connection."""
+        """Close database connection and save VectorIndex."""
+        # Save VectorIndex if used
+        if self._use_vector_index and self._vector_index is not None:
+            if self._vector_index.count() > 0:
+                self._vector_index.save(self._vector_index_path)
+
         self.conn.close()
     
     def __enter__(self):

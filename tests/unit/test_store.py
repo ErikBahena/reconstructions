@@ -7,8 +7,8 @@ import numpy as np
 import tempfile
 import time
 from pathlib import Path
-from src.reconstructions.core import Fragment
-from src.reconstructions.store import FragmentStore
+from reconstructions.core import Fragment
+from reconstructions.store import FragmentStore
 
 
 @pytest.fixture
@@ -229,9 +229,42 @@ class TestFragmentStoreAccess:
         store.close()
 
 
+class TestFragmentStorePerformance:
+    """Performance tests for FragmentStore."""
+
+    def test_find_similar_semantic_is_fast(self, temp_db):
+        """Similarity search completes in under 10ms."""
+        store = FragmentStore(temp_db)
+
+        # Add 1000 fragments with 384-dim embeddings
+        for i in range(1000):
+            embedding = np.random.randn(384).astype(np.float32)
+            embedding = embedding / np.linalg.norm(embedding)
+
+            fragment = Fragment(
+                content={"semantic": embedding.tolist()},
+                initial_salience=0.5,
+                source="test"
+            )
+            store.save(fragment)
+
+        # Search timing
+        query = np.random.randn(384).astype(np.float32)
+        query = query / np.linalg.norm(query)
+
+        start = time.perf_counter()
+        results = store.find_similar_semantic(query, top_k=50)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        assert elapsed_ms < 10, f"Search took {elapsed_ms:.1f}ms"
+        assert len(results) <= 50
+
+        store.close()
+
+
 class TestFragmentStoreIntegration:
     """Integration tests for FragmentStore."""
-    
+
     def test_save_get_roundtrip(self, temp_db):
         """Test that save→get preserves all data."""
         store = FragmentStore(temp_db)
