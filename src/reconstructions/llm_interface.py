@@ -369,7 +369,7 @@ def main():
     from pathlib import Path
     
     parser = argparse.ArgumentParser(description="Memory-Augmented AI Chat")
-    parser.add_argument("--model", "-m", type=str, default="llama3.2:3b",
+    parser.add_argument("--model", "-m", type=str, default="gemma3:4b",
                         help="Ollama model to use")
     parser.add_argument("--db", type=str, default=None,
                         help="Database path")

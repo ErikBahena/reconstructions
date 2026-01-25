@@ -44,3 +44,6 @@ Thumbs.db
 
 # Project specific
 test_manual.db
+
+# Models (downloaded on first use)
+models/
