@@ -4,8 +4,8 @@ Unit tests for strength and decay calculations.
 
 import pytest
 import time
-from src.reconstructions.core import Fragment
-from src.reconstructions.strength import (
+from reconstructions.core import Fragment
+from reconstructions.strength import (
     calculate_decay,
     calculate_rehearsal_bonus,
     calculate_strength,

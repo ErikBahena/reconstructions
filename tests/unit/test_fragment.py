@@ -4,7 +4,7 @@ Unit tests for Fragment dataclass.
 
 import pytest
 import time
-from src.reconstructions.core import Fragment
+from reconstructions.core import Fragment
 
 
 class TestFragmentCreation:

@@ -4,8 +4,8 @@ Unit tests for constraints system.
 
 import pytest
 import time
-from src.reconstructions.core import Fragment
-from src.reconstructions.constraints import (
+from reconstructions.core import Fragment
+from reconstructions.constraints import (
     Constraint,
     ConstraintType,
     ConstraintResult,

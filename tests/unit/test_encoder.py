@@ -5,9 +5,9 @@ Integration tests for the complete encoding pipeline.
 import pytest
 import tempfile
 from pathlib import Path
-from src.reconstructions.encoding import Experience, Context
-from src.reconstructions.store import FragmentStore
-from src.reconstructions.encoder import encode, encode_batch
+from reconstructions.encoding import Experience, Context
+from reconstructions.store import FragmentStore
+from reconstructions.encoder import encode, encode_batch
 
 
 class TestEncodeBasic:

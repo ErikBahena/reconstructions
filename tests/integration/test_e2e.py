@@ -6,14 +6,14 @@ import pytest
 import tempfile
 import time
 from pathlib import Path
-from src.reconstructions.core import Query
-from src.reconstructions.store import FragmentStore
-from src.reconstructions.encoding import Experience, Context
-from src.reconstructions.encoder import encode, encode_batch
-from src.reconstructions.reconstruction import reconstruct
-from src.reconstructions.engine import ReconstructionEngine, ResultType
-from src.reconstructions.certainty import VarianceController
-from src.reconstructions.main import Config, setup_data_directory
+from reconstructions.core import Query
+from reconstructions.store import FragmentStore
+from reconstructions.encoding import Experience, Context
+from reconstructions.encoder import encode, encode_batch
+from reconstructions.reconstruction import reconstruct
+from reconstructions.engine import ReconstructionEngine, ResultType
+from reconstructions.certainty import VarianceController
+from reconstructions.main import Config, setup_data_directory
 
 
 class TestEndToEnd:

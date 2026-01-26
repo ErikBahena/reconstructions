@@ -5,10 +5,10 @@ Unit tests for main loop and goal-driven engine.
 import pytest
 import tempfile
 from pathlib import Path
-from src.reconstructions.core import Query
-from src.reconstructions.store import FragmentStore
-from src.reconstructions.encoding import Experience
-from src.reconstructions.engine import (
+from reconstructions.core import Query
+from reconstructions.store import FragmentStore
+from reconstructions.encoding import Experience
+from reconstructions.engine import (
     GoalType,
     EngineGoal,
     GoalQueue,

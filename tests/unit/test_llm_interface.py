@@ -10,14 +10,14 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import json
 
-from src.reconstructions.llm_interface import (
+from reconstructions.llm_interface import (
     OllamaConfig,
     OllamaClient,
     LLMInterface
 )
-from src.reconstructions.store import FragmentStore
-from src.reconstructions.engine import ReconstructionEngine
-from src.reconstructions.encoding import Experience
+from reconstructions.store import FragmentStore
+from reconstructions.engine import ReconstructionEngine
+from reconstructions.encoding import Experience
 
 
 class TestOllamaConfig:
@@ -40,7 +40,7 @@ class TestOllamaConfig:
 class TestOllamaClient:
     """Test Ollama client (mocked)."""
     
-    @patch('src.reconstructions.llm_interface.requests.post')
+    @patch('reconstructions.llm_interface.requests.post')
     def test_generate_success(self, mock_post):
         """Generate returns response on success."""
         mock_response = Mock()
@@ -54,7 +54,7 @@ class TestOllamaClient:
         assert result == "Hello!"
         mock_post.assert_called_once()
     
-    @patch('src.reconstructions.llm_interface.requests.post')
+    @patch('reconstructions.llm_interface.requests.post')
     def test_generate_error(self, mock_post):
         """Generate handles errors gracefully."""
         import requests as req
@@ -65,7 +65,7 @@ class TestOllamaClient:
         
         assert "Error" in result
     
-    @patch('src.reconstructions.llm_interface.requests.get')
+    @patch('reconstructions.llm_interface.requests.get')
     def test_is_available(self, mock_get):
         """is_available checks connection."""
         mock_response = Mock()
@@ -140,7 +140,7 @@ class TestLLMInterface:
             
             assert "remember" in result.lower()
             # Verify something was stored
-            assert len(store.embeddings) > 0
+            assert not store.is_empty()
             
             store.close()
     

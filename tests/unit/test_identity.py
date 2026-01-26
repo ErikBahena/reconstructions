@@ -4,7 +4,7 @@ Unit tests for identity model.
 
 import pytest
 import time
-from src.reconstructions.identity import (
+from reconstructions.identity import (
     Trait, 
     Belief, 
     Goal, 

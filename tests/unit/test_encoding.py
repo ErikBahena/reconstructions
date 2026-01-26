@@ -4,7 +4,7 @@ Unit tests for Experience and Context dataclasses.
 
 import pytest
 import time
-from src.reconstructions.encoding import Experience, Context
+from reconstructions.encoding import Experience, Context
 
 
 class TestExperience:

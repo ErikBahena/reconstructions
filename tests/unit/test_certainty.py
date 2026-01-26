@@ -3,8 +3,8 @@ Unit tests for variance and certainty system.
 """
 
 import pytest
-from src.reconstructions.core import Strand
-from src.reconstructions.certainty import (
+from reconstructions.core import Strand
+from reconstructions.certainty import (
     VarianceController,
     calculate_strand_distance
 )

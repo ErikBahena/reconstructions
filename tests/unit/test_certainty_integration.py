@@ -6,12 +6,12 @@ import pytest
 import tempfile
 import copy
 from pathlib import Path
-from src.reconstructions.core import Fragment, Query
-from src.reconstructions.store import FragmentStore
-from src.reconstructions.encoding import Experience, Context
-from src.reconstructions.encoder import encode
-from src.reconstructions.reconstruction import reconstruct
-from src.reconstructions.certainty import VarianceController
+from reconstructions.core import Fragment, Query
+from reconstructions.store import FragmentStore
+from reconstructions.encoding import Experience, Context
+from reconstructions.encoder import encode
+from reconstructions.reconstruction import reconstruct
+from reconstructions.certainty import VarianceController
 
 
 class TestReconstructionCertainty:

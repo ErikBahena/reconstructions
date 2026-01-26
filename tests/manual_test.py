@@ -4,8 +4,8 @@ Manual test script for Phase 1.
 Tests creating fragments via Python REPL-style interactions.
 """
 
-from src.reconstructions.core import Fragment, Strand, Query
-from src.reconstructions.store import FragmentStore
+from reconstructions.core import Fragment, Strand, Query
+from reconstructions.store import FragmentStore
 import numpy as np
 import time
 

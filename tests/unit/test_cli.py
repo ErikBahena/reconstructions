@@ -5,7 +5,7 @@ Unit tests for CLI interface.
 import pytest
 import tempfile
 from pathlib import Path
-from src.reconstructions.cli import CLI
+from reconstructions.cli import CLI
 
 
 class TestCLI:

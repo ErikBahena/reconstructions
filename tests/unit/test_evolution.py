@@ -3,7 +3,7 @@ Unit tests for identity evolution.
 """
 
 import pytest
-from src.reconstructions.identity import (
+from reconstructions.identity import (
     IdentityEvolver, 
     IdentityState, 
     Trait, 

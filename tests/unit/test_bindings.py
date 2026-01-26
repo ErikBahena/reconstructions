@@ -5,10 +5,10 @@ Unit tests for binding creation.
 import pytest
 import tempfile
 from pathlib import Path
-from src.reconstructions.core import Fragment
-from src.reconstructions.encoding import Context
-from src.reconstructions.store import FragmentStore
-from src.reconstructions.bindings import (
+from reconstructions.core import Fragment
+from reconstructions.encoding import Context
+from reconstructions.store import FragmentStore
+from reconstructions.bindings import (
     find_temporal_bindings,
     find_semantic_bindings,
     create_bindings,
