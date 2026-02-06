@@ -12,13 +12,18 @@ import time
 import uuid
 import heapq
 
+from pathlib import Path
 from .core import Fragment, Strand, Query
 from .store import FragmentStore
 from .encoding import Experience, Context
 from .encoder import encode
 from .reconstruction import reconstruct, ReconstructionConfig
 from .certainty import VarianceController
-from .identity import IdentityState, IdentityStore, IdentityEvolver
+from .identity import IdentityState, IdentityStore, IdentityEvolver, ActiveIdentityState
+from .consolidation import ConsolidationScheduler, ConsolidationConfig
+from .health import MemoryHealthMonitor
+from .learning import SalienceWeightLearner
+from .patterns import CrossSessionPatternDetector
 
 
 class GoalType(Enum):
@@ -26,6 +31,7 @@ class GoalType(Enum):
     QUERY = "query"           # Reconstruct memory
     ENCODE = "encode"         # Encode new experience
     REFLECT = "reflect"       # Self-reflection on memories
+    CONSOLIDATION = "consolidation"  # Autonomous memory consolidation
     MAINTENANCE = "maintenance"  # Maintenance tasks (decay, cleanup)
     IDLE = "idle"            # Idle processing when nothing else to do
 
@@ -78,6 +84,7 @@ class ResultType(Enum):
     STRAND = "strand"          # Memory reconstruction result
     ENCODED = "encoded"        # New fragment encoded
     REFLECTED = "reflected"    # Reflection output
+    CONSOLIDATED = "consolidated"  # Consolidation completed
     MAINTAINED = "maintained"  # Maintenance completed
     ERROR = "error"           # Error occurred
 
@@ -111,20 +118,58 @@ class ReconstructionEngine:
         self,
         store: FragmentStore,
         identity_store: Optional[IdentityStore] = None,
-        config: Optional[ReconstructionConfig] = None
+        config: Optional[ReconstructionConfig] = None,
+        consolidation_config: Optional[ConsolidationConfig] = None,
+        enable_consolidation: bool = True,
+        health_monitor: Optional[MemoryHealthMonitor] = None,
+        enable_weight_learning: bool = True
     ):
         self.store = store
         self.identity_store = identity_store or IdentityStore()
         self.config = config or ReconstructionConfig()
-        
+
         self.goal_queue = GoalQueue()
         self.context = Context()
         self.variance_controller = VarianceController()
         self.identity_evolver = IdentityEvolver()
-        
+
+        # Active identity state for identity-aware encoding
+        current_identity = self.identity_store.get_current_state()
+        self.active_identity = ActiveIdentityState(current_identity)
+
+        # Weight learning for adaptive salience calculation
+        self.weight_learner = None
+        if enable_weight_learning:
+            weights_path = Path.home() / ".reconstructions" / "weights.json"
+            if weights_path.exists():
+                try:
+                    self.weight_learner = SalienceWeightLearner.load_checkpoint(weights_path)
+                except Exception:
+                    self.weight_learner = SalienceWeightLearner()
+            else:
+                self.weight_learner = SalienceWeightLearner()
+
+        # Pattern detection for cross-session pattern recognition
+        self.pattern_detector = CrossSessionPatternDetector(store)
+
+        # Health monitoring
+        self.health_monitor = health_monitor or MemoryHealthMonitor(store)
+
+        # Consolidation scheduler
+        self.consolidation_scheduler = None
+        if enable_consolidation:
+            self.consolidation_scheduler = ConsolidationScheduler(
+                store,
+                consolidation_config or ConsolidationConfig(),
+                config,
+                self.health_monitor
+            )
+
         self._running = False
         self._last_maintenance = time.time()
         self._maintenance_interval = 300  # 5 minutes
+        self._last_activity = time.time()  # Track for idle detection
+        self._consolidation_count = 0  # Track for checkpoint saving
         
     def submit_query(self, query: Query, priority: float = 1.0) -> str:
         """
@@ -177,7 +222,7 @@ class ReconstructionEngine:
     def process_goal(self, goal: EngineGoal) -> Result:
         """
         Process a single goal.
-        
+
         Dispatches to the appropriate handler based on goal type.
         """
         try:
@@ -185,6 +230,8 @@ class ReconstructionEngine:
                 return self._process_query(goal)
             elif goal.goal_type == GoalType.ENCODE:
                 return self._process_encode(goal)
+            elif goal.goal_type == GoalType.CONSOLIDATION:
+                return self._process_consolidation(goal)
             elif goal.goal_type == GoalType.MAINTENANCE:
                 return self._process_maintenance(goal)
             elif goal.goal_type == GoalType.REFLECT:
@@ -209,7 +256,10 @@ class ReconstructionEngine:
                 success=False,
                 error_message="No query in goal payload"
             )
-        
+
+        # Track query timing
+        start_time = time.time()
+
         strand = reconstruct(
             query,
             self.store,
@@ -217,7 +267,27 @@ class ReconstructionEngine:
             config=self.config,
             variance_controller=self.variance_controller
         )
-        
+
+        # Log query metrics
+        latency_ms = (time.time() - start_time) * 1000
+        if self.health_monitor:
+            self.health_monitor.log_query(query, strand, latency_ms)
+
+        # Record query for adaptive scheduling
+        if self.consolidation_scheduler:
+            self.consolidation_scheduler.record_query()
+
+        # Record feedback for weight learning
+        if self.weight_learner:
+            # Query is successful if coherence > 0.5
+            was_successful = strand.coherence_score > 0.5
+
+            # Record feedback for each retrieved fragment
+            for frag_id in strand.fragments:
+                fragment = self.store.get(frag_id)
+                if fragment:
+                    self.weight_learner.record_retrieval(fragment, was_successful)
+
         return Result(
             result_type=ResultType.STRAND,
             goal_id=goal.id,
@@ -234,13 +304,24 @@ class ReconstructionEngine:
                 success=False,
                 error_message="No experience in goal payload"
             )
-        
-        fragment = encode(experience, self.context, self.store)
-        
+
+        # Encode with identity-aware salience boosting and learned weights
+        fragment = encode(
+            experience,
+            self.context,
+            self.store,
+            identity_state=self.active_identity,
+            weight_learner=self.weight_learner
+        )
+
+        # Record encoding for adaptive scheduling
+        if self.consolidation_scheduler:
+            self.consolidation_scheduler.record_encoding(fragment.initial_salience)
+
         return Result(
             result_type=ResultType.ENCODED,
             goal_id=goal.id,
-            data={"fragment_id": fragment.id}
+            data={"fragment_id": fragment.id, "salience": fragment.initial_salience}
         )
     
     def _process_maintenance(self, goal: EngineGoal) -> Result:
@@ -271,6 +352,55 @@ class ReconstructionEngine:
             data={}
         )
     
+    def _process_consolidation(self, goal: EngineGoal) -> Result:
+        """Process autonomous consolidation."""
+        if self.consolidation_scheduler is None:
+            return Result(
+                result_type=ResultType.ERROR,
+                goal_id=goal.id,
+                success=False,
+                error_message="Consolidation scheduler not enabled"
+            )
+
+        stats = self.consolidation_scheduler.consolidate()
+
+        # Increment consolidation counter
+        self._consolidation_count += 1
+
+        # Save weight learner checkpoint every 10 consolidations
+        if self.weight_learner and self._consolidation_count % 10 == 0:
+            weights_path = Path.home() / ".reconstructions" / "weights.json"
+            try:
+                self.weight_learner.save_checkpoint(weights_path)
+            except Exception:
+                pass  # Don't fail consolidation if checkpoint save fails
+
+        # Run pattern detection every 10 consolidations
+        if self._consolidation_count % 10 == 0:
+            try:
+                # Detect all pattern types
+                temporal = self.pattern_detector.detect_temporal_patterns()
+                workflows = self.pattern_detector.detect_workflow_patterns()
+                projects = self.pattern_detector.detect_project_switches()
+
+                # Save detected patterns
+                self.pattern_detector.save_patterns()
+
+                # Add pattern counts to stats
+                stats["patterns_detected"] = {
+                    "temporal": len(temporal),
+                    "workflow": len(workflows),
+                    "project": len(projects)
+                }
+            except Exception:
+                pass  # Don't fail consolidation if pattern detection fails
+
+        return Result(
+            result_type=ResultType.CONSOLIDATED,
+            goal_id=goal.id,
+            data=stats
+        )
+
     def _process_idle(self, goal: EngineGoal) -> Result:
         """Process idle time."""
         # Could do background consolidation
@@ -279,23 +409,88 @@ class ReconstructionEngine:
             goal_id=goal.id,
             data={}
         )
+
+    def get_detected_patterns(self) -> dict:
+        """
+        Get all detected patterns.
+
+        Returns:
+            Dictionary with temporal, workflow, and project patterns
+        """
+        return self.pattern_detector.get_all_patterns()
+
+    def force_pattern_detection(self) -> dict:
+        """
+        Manually trigger pattern detection.
+
+        Returns:
+            Dictionary with counts of detected patterns
+        """
+        temporal = self.pattern_detector.detect_temporal_patterns()
+        workflows = self.pattern_detector.detect_workflow_patterns()
+        projects = self.pattern_detector.detect_project_switches()
+
+        self.pattern_detector.save_patterns()
+
+        return {
+            "temporal": len(temporal),
+            "workflow": len(workflows),
+            "project": len(projects)
+        }
     
     def step(self) -> Optional[Result]:
         """
         Process a single goal from the queue.
-        
+
         Returns:
             Result if goal processed, None if queue empty
         """
+        current_time = time.time()
+
         # Check if maintenance is needed
-        if time.time() - self._last_maintenance > self._maintenance_interval:
+        if current_time - self._last_maintenance > self._maintenance_interval:
             self.submit_maintenance(priority=4.0)
-        
+
+        # Check if consolidation is needed
+        if (self.consolidation_scheduler is not None and
+            self.consolidation_scheduler.should_consolidate(current_time)):
+            # Schedule consolidation (lower priority than active tasks)
+            goal = EngineGoal(
+                priority=3.0,
+                goal_type=GoalType.CONSOLIDATION,
+                payload={}
+            )
+            self.goal_queue.push(goal)
+
         goal = self.goal_queue.pop()
         if goal is None:
             return None
-        
+
+        # Track activity for idle detection
+        self._last_activity = current_time
+
         return self.process_goal(goal)
+
+    def query(self, query: Query) -> Optional[Strand]:
+        """
+        Convenience method to submit and process a query immediately.
+
+        Args:
+            query: Query to process
+
+        Returns:
+            Strand if successful, None if error
+        """
+        self.submit_query(query, priority=0.0)  # Highest priority
+        result = self.step()
+
+        if result is None:
+            return None
+
+        if result.result_type == ResultType.STRAND and result.success:
+            return result.data.get("strand")
+
+        return None
     
     def run(self, max_iterations: Optional[int] = None) -> List[Result]:
         """

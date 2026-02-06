@@ -320,5 +320,172 @@ class IdentityEvolver:
                         priority=priority if priority is not None else 0.5
                     )
                     new_state.add_goal(new_goal)
-                    
+
         return new_state
+
+
+class ActiveIdentityState:
+    """
+    Real-time identity state used for memory operations.
+
+    Provides salience boosting based on active goals and contextual traits.
+    This makes the system preferentially encode and retrieve goal-relevant memories.
+    """
+
+    def __init__(self, identity_state: Optional[IdentityState] = None):
+        self.identity_state = identity_state or IdentityState()
+        self.active_goals: List[Goal] = []
+        self.contextual_traits: Dict[str, float] = {}
+
+        # Initialize with active goals from identity state
+        self._sync_active_goals()
+
+    def _sync_active_goals(self):
+        """Sync active goals from identity state."""
+        self.active_goals = [
+            goal for goal in self.identity_state.goals.values()
+            if goal.status == "active"
+        ]
+
+    def set_active_goal(self, goal_text: str, intensity: float = 0.8):
+        """
+        Set or update an active goal.
+
+        Args:
+            goal_text: Description of the goal
+            intensity: Priority/intensity (0-1)
+        """
+        # Check if goal already exists
+        existing = None
+        for goal in self.active_goals:
+            if goal.description == goal_text or goal.name == goal_text:
+                existing = goal
+                break
+
+        if existing:
+            # Update priority
+            existing.priority = intensity
+            existing.last_updated = time.time()
+        else:
+            # Create new goal
+            new_goal = Goal(
+                name=goal_text[:50],  # Short name
+                description=goal_text,
+                priority=intensity,
+                status="active"
+            )
+            self.active_goals.append(new_goal)
+            self.identity_state.add_goal(new_goal)
+
+    def clear_goal(self, goal_name: str):
+        """Mark a goal as completed or remove it."""
+        for goal in self.active_goals:
+            if goal.name == goal_name or goal.description == goal_name:
+                goal.status = "completed"
+                self.active_goals = [g for g in self.active_goals if g.status == "active"]
+                break
+
+    def update_from_fragments(self, fragments: List['Fragment']):
+        """
+        Learn from recent memory activity.
+
+        Infers active goals and priorities from fragment content.
+
+        Args:
+            fragments: Recent fragments to analyze
+        """
+        # TODO: Implement goal extraction from fragments
+        # Could use semantic clustering to identify recurring themes
+        # and infer implicit goals
+        pass
+
+    def relevance_boost(self, fragment: 'Fragment') -> float:
+        """
+        Calculate salience boost based on identity relevance.
+
+        Args:
+            fragment: Fragment to evaluate
+
+        Returns:
+            Salience boost (0.0 to 0.5)
+        """
+        boost = 0.0
+
+        # Goal relevance boost
+        for goal in self.active_goals:
+            if self._relates_to_goal(fragment, goal):
+                boost += 0.2 * goal.priority
+
+        # Trait alignment boost
+        for trait_name, weight in self.contextual_traits.items():
+            if self._expresses_trait(fragment, trait_name):
+                boost += 0.1 * weight
+
+        # Cap total boost
+        return min(boost, 0.5)
+
+    def _relates_to_goal(self, fragment: 'Fragment', goal: Goal) -> bool:
+        """
+        Check if fragment content relates to goal.
+
+        Uses semantic similarity between fragment and goal description.
+
+        Args:
+            fragment: Fragment to check
+            goal: Goal to match against
+
+        Returns:
+            True if fragment is goal-relevant
+        """
+        from .features import extract_semantic_features
+        import numpy as np
+
+        # Get fragment semantic content
+        fragment_text = fragment.content.get("semantic", "")
+        if not fragment_text or not isinstance(fragment_text, str):
+            return False
+
+        # Get goal description
+        goal_text = goal.description or goal.name
+        if not goal_text:
+            return False
+
+        # Compute semantic similarity
+        fragment_embedding = extract_semantic_features(fragment_text)
+        goal_embedding = extract_semantic_features(goal_text)
+
+        if fragment_embedding is None or goal_embedding is None:
+            return False
+
+        # Cosine similarity
+        similarity = float(
+            np.dot(fragment_embedding, goal_embedding) /
+            (np.linalg.norm(fragment_embedding) * np.linalg.norm(goal_embedding))
+        )
+
+        # Threshold for relevance
+        return similarity >= 0.5
+
+    def _expresses_trait(self, fragment: 'Fragment', trait_name: str) -> bool:
+        """
+        Check if fragment expresses a personality trait.
+
+        Args:
+            fragment: Fragment to check
+            trait_name: Name of trait
+
+        Returns:
+            True if fragment expresses this trait
+        """
+        # TODO: Implement trait detection
+        # Could use keyword matching or sentiment analysis
+        # For now, simple keyword matching
+        fragment_text = str(fragment.content.get("semantic", "")).lower()
+        trait_keywords = {
+            "curious": ["wonder", "question", "why", "how", "explore", "investigate"],
+            "cautious": ["careful", "verify", "check", "ensure", "safe", "risk"],
+            "analytical": ["analyze", "logic", "reason", "pattern", "data", "evidence"]
+        }
+
+        keywords = trait_keywords.get(trait_name.lower(), [])
+        return any(keyword in fragment_text for keyword in keywords)

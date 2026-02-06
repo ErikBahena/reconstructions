@@ -189,11 +189,11 @@ class TestGoalRelevance:
     """Test goal relevance calculation."""
     
     def test_no_goals(self):
-        """No active goals = moderate relevance."""
+        """No active goals = low relevance (headroom for goal-relevant fragments)."""
         content = {"semantic": "anything"}
         relevance = calculate_goal_relevance(content, [])
-        
-        assert relevance == 0.5
+
+        assert relevance == 0.3
     
     def test_goal_match(self):
         """Matching goal = high relevance."""
@@ -209,19 +209,19 @@ class TestGoalRelevance:
         """Non-matching goal = moderate relevance."""
         content = {"semantic": "The weather is nice today"}
         goals = ["learn", "programming"]
-        
+
         relevance = calculate_goal_relevance(content, goals)
-        
+
         assert relevance == 0.5
-    
+
     def test_no_semantic_content(self):
-        """No semantic content = moderate relevance."""
+        """No semantic content = low relevance."""
         content = {"visual": [0.1, 0.2]}
         goals = ["learn"]
-        
+
         relevance = calculate_goal_relevance(content, goals)
-        
-        assert relevance == 0.5
+
+        assert relevance == 0.3
 
 
 class TestSalienceComplete:

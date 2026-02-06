@@ -43,7 +43,12 @@ htmlcov/
 Thumbs.db
 
 # Project specific
-test_manual.db
+dev_data/
+visualization/
+.reconstructions/
+.claude/
+*.usearch
+*.log
 
 # Models (downloaded on first use)
 models/

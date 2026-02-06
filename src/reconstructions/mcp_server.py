@@ -11,6 +11,8 @@ from .core import Query
 from .encoding import Experience, Context
 from .store import FragmentStore
 from .engine import ReconstructionEngine
+from .health import MemoryHealthMonitor, format_health_report
+from .consolidation import ConsolidationConfig
 
 
 class MemoryServer:
@@ -30,7 +32,19 @@ class MemoryServer:
         """
         self.db_path = db_path
         self.store = FragmentStore(str(db_path))
-        self.engine = ReconstructionEngine(self.store)
+
+        # Initialize health monitoring
+        self.health_monitor = MemoryHealthMonitor(self.store, db_path.parent)
+
+        # Initialize engine with health monitoring
+        consolidation_config = ConsolidationConfig()
+        self.engine = ReconstructionEngine(
+            self.store,
+            enable_consolidation=True,
+            consolidation_config=consolidation_config,
+            health_monitor=self.health_monitor
+        )
+
         self.context = Context()
 
     def memory_store(
@@ -209,43 +223,83 @@ class MemoryServer:
         except Exception as e:
             return {"traits": {}, "beliefs": [], "goals": [], "error": str(e)}
 
-    def memory_status(self) -> dict:
+    def memory_status(self, format_text: bool = False) -> dict:
         """
-        Get memory system status.
+        Get comprehensive memory system health status.
+
+        Args:
+            format_text: If True, return formatted text report
 
         Returns:
-            {"fragment_count": int, "health": str, ...}
+            Health report dict or formatted string
         """
         try:
-            # Count fragments
-            cursor = self.store.conn.cursor()
-            cursor.execute("SELECT COUNT(*) as count FROM fragments")
-            count = cursor.fetchone()["count"]
+            report = self.health_monitor.diagnose()
 
-            # Get time range
-            cursor.execute("""
-                SELECT MIN(created_at) as oldest, MAX(created_at) as newest
-                FROM fragments
-            """)
-            row = cursor.fetchone()
+            if format_text:
+                return {
+                    "status": "ok",
+                    "report": format_health_report(report)
+                }
 
-            # Get index info
-            index_size = 0
-            if hasattr(self.store, '_vector_index') and self.store._vector_index is not None:
-                index_path = self.store.db_path.with_suffix(".usearch")
-                if index_path.exists():
-                    index_size = index_path.stat().st_size / (1024 * 1024)
-
+            # Return structured data
             return {
-                "fragment_count": count,
-                "index_size_mb": round(index_size, 2),
-                "oldest_memory": row["oldest"] if row else None,
-                "newest_memory": row["newest"] if row else None,
-                "health": "ok"
+                "status": "ok",
+                "timestamp": report.timestamp.isoformat(),
+                "database_size_mb": report.database_size_mb,
+                "fragments": {
+                    "total": report.fragment_stats.total_count,
+                    "last_24h": report.fragment_stats.last_24h_count,
+                    "avg_salience": report.fragment_stats.avg_salience,
+                    "avg_bindings": report.fragment_stats.avg_bindings,
+                    "never_accessed": report.fragment_stats.never_accessed_count,
+                    "low_salience": report.fragment_stats.low_salience_count
+                },
+                "consolidation": {
+                    "last_run_seconds_ago": report.consolidation_stats.last_run_ago_seconds,
+                    "runs_per_hour": report.consolidation_stats.runs_per_hour,
+                    "total_rehearsals": report.consolidation_stats.total_rehearsals,
+                    "bindings_created": report.consolidation_stats.bindings_created
+                },
+                "retrieval": {
+                    "recent_queries": report.retrieval_stats.recent_queries_count,
+                    "avg_coherence": report.retrieval_stats.avg_coherence,
+                    "avg_latency_ms": report.retrieval_stats.avg_latency_ms,
+                    "success_rate": report.retrieval_stats.success_rate
+                },
+                "warnings": report.warnings,
+                "recommendations": report.recommendations
             }
 
         except Exception as e:
-            return {"fragment_count": 0, "health": "error", "error": str(e)}
+            return {"status": "error", "error": str(e)}
+
+    def memory_consolidate(self) -> dict:
+        """
+        Manually trigger memory consolidation.
+
+        Returns:
+            Consolidation statistics
+        """
+        try:
+            if not self.engine.consolidation_scheduler:
+                return {
+                    "success": False,
+                    "error": "Consolidation not enabled"
+                }
+
+            stats = self.engine.consolidation_scheduler.consolidate()
+
+            return {
+                "success": True,
+                "rehearsed": stats.get("rehearsed_count", 0),
+                "bindings_strengthened": stats.get("bindings_strengthened", 0),
+                "patterns_discovered": stats.get("patterns_discovered", 0),
+                "duration_ms": stats.get("duration_ms", 0)
+            }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def close(self):
         """Close the memory server."""

@@ -112,27 +112,36 @@ def spread_activation(
             for fragment in domain_matches:
                 activation.activate(fragment.id, 0.3)  # Base domain activation
     
-    # Step 4: Spread through bindings
+    # Step 4: Spread through bindings (optimized with batch loading)
     for depth in range(config.MAX_SPREAD_DEPTH):
         decay = config.ACTIVATION_DECAY ** (depth + 1)
-        
-        # Get currently activated fragments
-        current_active = list(activation.activations.keys())
-        
+
+        # Get currently activated fragments, capped to top 50 by activation
+        # to prevent exponential blowup through binding network
+        active_items = [
+            (frag_id, act) for frag_id, act in activation.activations.items()
+            if act >= config.MIN_ACTIVATION
+        ]
+        active_items.sort(key=lambda x: x[1], reverse=True)
+        current_active = [frag_id for frag_id, _ in active_items[:50]]
+
+        if not current_active:
+            break  # No more fragments to spread from
+
+        # Batch load fragments (single query instead of N queries)
+        fragments = store.get_many(current_active)
+
+        # Spread activation through bindings
         for frag_id in current_active:
-            current_activation = activation.get(frag_id)
-            if current_activation < config.MIN_ACTIVATION:
-                continue
-            
-            # Get fragment and spread to bindings
-            fragment = store.get(frag_id)
+            fragment = fragments.get(frag_id)
             if fragment is None:
                 continue
-            
+
+            current_activation = activation.get(frag_id)
             for bound_id in fragment.bindings:
                 spread_amount = current_activation * decay
                 activation.activate(bound_id, spread_amount)
-    
+
     return activation
 
 
@@ -144,45 +153,95 @@ def select_candidates(
 ) -> List[Fragment]:
     """
     Select candidate fragments for reconstruction.
-    
-    Combines activation with strength and adds noise for variance.
-    
+
+    Combines activation with strength, temporal clustering, and binding
+    connections to select coherent fragment sets.
+
     Args:
         activation: Activation state
         store: Fragment store
         variance_target: Target variance (0=deterministic, 1=random)
         config: Optional configuration
-        
+
     Returns:
         Selected fragments
     """
     if config is None:
         config = ReconstructionConfig()
-    
+
+    # Build candidate list with base scores (optimized with batch loading)
+    # Filter by activation threshold first
+    candidate_ids = [
+        frag_id for frag_id, act in activation.activations.items()
+        if act >= config.MIN_ACTIVATION
+    ]
+
+    if not candidate_ids:
+        return []
+
+    # Batch load candidate fragments (single query)
+    fragments_dict = store.get_many(candidate_ids)
+
+    # Calculate scores for all candidates
     candidates = []
-    
-    for frag_id, act in activation.activations.items():
-        if act < config.MIN_ACTIVATION:
-            continue
-        
-        fragment = store.get(frag_id)
+    for frag_id in candidate_ids:
+        fragment = fragments_dict.get(frag_id)
         if fragment is None:
             continue
-        
-        # Calculate combined score
+
+        act = activation.get(frag_id)
         strength = calculate_strength(fragment)
-        
-        # Add noise based on variance target
-        noise = random.gauss(0, config.NOISE_SCALE * variance_target)
-        
-        score = (act * 0.6 + strength * 0.4) + noise
-        
-        candidates.append((fragment, score))
-    
-    # Sort by score and take top K
-    candidates.sort(key=lambda x: x[1], reverse=True)
-    selected = [frag for frag, score in candidates[:config.MAX_FRAGMENTS]]
-    
+        base_score = act * 0.6 + strength * 0.4
+        candidates.append((fragment, base_score))
+
+    if not candidates:
+        return []
+
+    # Greedy selection with coherence bonus
+    selected: List[Fragment] = []
+    selected_ids: set = set()
+    remaining = candidates.copy()
+
+    while len(selected) < config.MAX_FRAGMENTS and remaining:
+        best_idx = -1
+        best_total_score = -float('inf')
+
+        for i, (fragment, base_score) in enumerate(remaining):
+            # Calculate coherence bonus based on already-selected fragments
+            coherence_bonus = 0.0
+
+            if selected:
+                # Temporal proximity bonus: prefer fragments close in time
+                min_time_gap = min(
+                    abs(fragment.created_at - s.created_at)
+                    for s in selected
+                )
+                # Bonus decays with time gap (1 hour = half bonus)
+                temporal_bonus = 0.3 / (1.0 + min_time_gap / 3600)
+                coherence_bonus += temporal_bonus
+
+                # Binding bonus: prefer fragments connected to selected ones
+                binding_count = sum(
+                    1 for s in selected
+                    if s.id in fragment.bindings or fragment.id in s.bindings
+                )
+                binding_bonus = 0.2 * min(binding_count / 3, 1.0)
+                coherence_bonus += binding_bonus
+
+            # Add noise for variance
+            noise = random.gauss(0, config.NOISE_SCALE * variance_target)
+
+            total_score = base_score + coherence_bonus + noise
+
+            if total_score > best_total_score:
+                best_total_score = total_score
+                best_idx = i
+
+        if best_idx >= 0:
+            fragment, _ = remaining.pop(best_idx)
+            selected.append(fragment)
+            selected_ids.add(fragment.id)
+
     return selected
 
 
@@ -407,10 +466,10 @@ def reconstruct(
         certainty = variance_controller.get_certainty(query_hash)
         strand.certainty = certainty
     
-    # Record access for rehearsal
+    # Record access for rehearsal (batch update instead of N individual get+save)
     import time as time_module
     now = time_module.time()
-    for fragment in filled:
-        store.record_access(fragment.id, now)
-    
+    if filled:
+        store.record_access_batch([f.id for f in filled], now)
+
     return strand

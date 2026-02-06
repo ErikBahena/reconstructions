@@ -157,20 +157,23 @@ def extract_temporal_features(context: Context) -> dict[str, float]:
 def extract_all_features(experience: Experience, context: Context) -> dict:
     """
     Extract all features from an experience.
-    
+
     This is the main entry point for feature extraction.
-    
+
     Args:
         experience: Experience to extract features from
         context: Current context
-        
+
     Returns:
         Dictionary mapping domain names to features
     """
     features = {}
-    
+
     # Semantic features (text)
     if experience.has_text:
+        # Store original text for retrieval
+        features["text"] = experience.text
+        # Store embedding for similarity search
         embedding = extract_semantic_features(experience.text)
         if embedding is not None:
             features["semantic"] = embedding.tolist()

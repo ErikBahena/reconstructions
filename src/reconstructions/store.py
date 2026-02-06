@@ -122,6 +122,8 @@ class FragmentStore:
                 # Use VectorIndex for fast search (requires 384-dim vectors)
                 if len(embedding) == 384:
                     self._vector_index.add(fragment.id, embedding)
+                    # Auto-save index to persist across process boundaries
+                    self._vector_index.save(self._vector_index_path)
                 else:
                     # Fall back to in-memory for non-standard dimensions
                     self.embeddings[fragment.id] = embedding
@@ -131,24 +133,24 @@ class FragmentStore:
     def get(self, fragment_id: str) -> Optional[Fragment]:
         """
         Retrieve a fragment by ID.
-        
+
         Args:
             fragment_id: Fragment ID
-            
+
         Returns:
             Fragment if found, None otherwise
         """
         cursor = self.conn.cursor()
-        
+
         cursor.execute("""
             SELECT * FROM fragments WHERE id = ?
         """, (fragment_id,))
-        
+
         row = cursor.fetchone()
-        
+
         if row is None:
             return None
-        
+
         # Deserialize JSON fields
         data = {
             "id": row["id"],
@@ -160,8 +162,51 @@ class FragmentStore:
             "source": row["source"],
             "tags": json.loads(row["tags"])
         }
-        
+
         return Fragment.from_dict(data)
+
+    def get_many(self, fragment_ids: list[str]) -> dict[str, Fragment]:
+        """
+        Retrieve multiple fragments by ID in a single query (batch loading).
+
+        This is much faster than calling get() in a loop, avoiding N+1 queries.
+
+        Args:
+            fragment_ids: List of fragment IDs to retrieve
+
+        Returns:
+            Dict mapping fragment_id -> Fragment for found fragments
+        """
+        if not fragment_ids:
+            return {}
+
+        cursor = self.conn.cursor()
+
+        # Build query with placeholders for IN clause
+        placeholders = ','.join('?' * len(fragment_ids))
+        cursor.execute(f"""
+            SELECT * FROM fragments WHERE id IN ({placeholders})
+        """, fragment_ids)
+
+        rows = cursor.fetchall()
+
+        fragments = {}
+        for row in rows:
+            # Deserialize JSON fields
+            data = {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "content": json.loads(row["content"]),
+                "bindings": json.loads(row["bindings"]),
+                "initial_salience": row["initial_salience"],
+                "access_log": json.loads(row["access_log"]),
+                "source": row["source"],
+                "tags": json.loads(row["tags"])
+            }
+
+            fragments[row["id"]] = Fragment.from_dict(data)
+
+        return fragments
     
     def delete(self, fragment_id: str) -> bool:
         """
@@ -257,9 +302,49 @@ class FragmentStore:
                 "tags": json.loads(row["tags"])
             }
             fragments.append(Fragment.from_dict(data))
-        
+
         return fragments
-    
+
+    def get_all_fragments(self, limit: Optional[int] = None) -> List[Fragment]:
+        """
+        Get all fragments from the store.
+
+        Args:
+            limit: Optional limit on number of fragments to return
+
+        Returns:
+            List of all fragments (or up to limit)
+        """
+        cursor = self.conn.cursor()
+
+        if limit is not None:
+            cursor.execute("""
+                SELECT * FROM fragments
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+        else:
+            cursor.execute("""
+                SELECT * FROM fragments
+                ORDER BY created_at DESC
+            """)
+
+        fragments = []
+        for row in cursor.fetchall():
+            data = {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "content": json.loads(row["content"]),
+                "bindings": json.loads(row["bindings"]),
+                "initial_salience": row["initial_salience"],
+                "access_log": json.loads(row["access_log"]),
+                "source": row["source"],
+                "tags": json.loads(row["tags"])
+            }
+            fragments.append(Fragment.from_dict(data))
+
+        return fragments
+
     def find_similar_semantic(self, embedding: np.ndarray, top_k: int = 10) -> List[tuple[str, float]]:
         """
         Find fragments with similar semantic embeddings.
@@ -302,10 +387,61 @@ class FragmentStore:
 
         return similarities[:top_k]
     
+    def get_recent_fragments(
+        self,
+        hours: float = 24.0,
+        min_salience: float = 0.0,
+        limit: Optional[int] = None
+    ) -> List[Fragment]:
+        """
+        Get recent fragments using SQL WHERE instead of loading all.
+
+        Args:
+            hours: How far back to look (default 24h)
+            min_salience: Minimum salience threshold
+            limit: Optional max number to return
+
+        Returns:
+            List of matching fragments, ordered by created_at DESC
+        """
+        import time
+        cutoff = time.time() - (hours * 3600)
+
+        cursor = self.conn.cursor()
+
+        query = """
+            SELECT * FROM fragments
+            WHERE created_at >= ? AND initial_salience >= ?
+            ORDER BY created_at DESC
+        """
+        params: list = [cutoff, min_salience]
+
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        cursor.execute(query, params)
+
+        fragments = []
+        for row in cursor.fetchall():
+            data = {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "content": json.loads(row["content"]),
+                "bindings": json.loads(row["bindings"]),
+                "initial_salience": row["initial_salience"],
+                "access_log": json.loads(row["access_log"]),
+                "source": row["source"],
+                "tags": json.loads(row["tags"])
+            }
+            fragments.append(Fragment.from_dict(data))
+
+        return fragments
+
     def record_access(self, fragment_id: str, timestamp: float) -> None:
         """
         Record an access to a fragment (for rehearsal tracking).
-        
+
         Args:
             fragment_id: Fragment ID
             timestamp: Access timestamp
@@ -313,9 +449,42 @@ class FragmentStore:
         fragment = self.get(fragment_id)
         if fragment is None:
             return
-        
+
         fragment.access_log.append(timestamp)
         self.save(fragment)
+
+    def record_access_batch(self, fragment_ids: List[str], timestamp: float) -> int:
+        """
+        Record access for multiple fragments in a single SQL operation.
+
+        Much faster than calling record_access() in a loop since it avoids
+        N individual get+save round-trips.
+
+        Args:
+            fragment_ids: List of fragment IDs to update
+            timestamp: Access timestamp
+
+        Returns:
+            Number of fragments updated
+        """
+        if not fragment_ids:
+            return 0
+
+        cursor = self.conn.cursor()
+        updated = 0
+
+        # Use a single transaction for all updates
+        for frag_id in fragment_ids:
+            # Append timestamp to the JSON access_log array in-place
+            cursor.execute("""
+                UPDATE fragments
+                SET access_log = json_insert(access_log, '$[#]', ?)
+                WHERE id = ?
+            """, (timestamp, frag_id))
+            updated += cursor.rowcount
+
+        self.conn.commit()
+        return updated
     
     def is_empty(self) -> bool:
         """

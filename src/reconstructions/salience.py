@@ -6,25 +6,28 @@ not delegated to an LLM.
 """
 
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from .core import Fragment
 from .store import FragmentStore
+
+if TYPE_CHECKING:
+    from .learning import SalienceWeightLearner
 
 
 # Configurable weights for salience calculation
 class SalienceConfig:
     """Configuration for salience calculation weights."""
-    
+
     # Component weights (should sum to ~1.0)
     W_EMOTIONAL = 0.35
     W_NOVELTY = 0.30
     W_GOAL = 0.25
     W_DEPTH = 0.10
-    
+
     # Novelty calculation
-    NOVELTY_SIMILARITY_THRESHOLD = 0.85  # Above this = not novel
+    NOVELTY_SIMILARITY_THRESHOLD = 0.70  # Above this = not novel
     NOVELTY_WINDOW_SIZE = 100  # Recent fragments to check
-    
+
     # Goal relevance
     GOAL_MATCH_BOOST = 0.3  # Boost for matching goals
 
@@ -39,34 +42,50 @@ def calculate_encoding_salience(
     novelty: float,
     goal_relevance: float,
     processing_depth: float,
-    config: Optional[SalienceConfig] = None
+    config: Optional[SalienceConfig] = None,
+    weight_learner: Optional['SalienceWeightLearner'] = None
 ) -> float:
     """
     Calculate encoding salience - OUR FORMULA.
-    
+
     This determines how strongly an experience is encoded.
     Based on cognitive science but we own the weights.
-    
+
+    If weight_learner is provided, uses learned weights instead of config.
+
     Args:
         emotional_intensity: How emotionally intense (0-1)
         novelty: How novel/unexpected (0-1)
         goal_relevance: How relevant to active goals (0-1)
         processing_depth: How deeply processed (0-1)
         config: Optional custom configuration
-        
+        weight_learner: Optional weight learner with adaptive weights
+
     Returns:
         Salience value (0-1)
     """
-    if config is None:
-        config = SalienceConfig()
-    
+    # Use learned weights if available, otherwise use config
+    if weight_learner is not None:
+        weights = weight_learner.get_current_weights()
+        w_emotional = weights["emotional"]
+        w_novelty = weights["novelty"]
+        w_goal = weights["goal"]
+        w_depth = weights["depth"]
+    else:
+        if config is None:
+            config = SalienceConfig()
+        w_emotional = config.W_EMOTIONAL
+        w_novelty = config.W_NOVELTY
+        w_goal = config.W_GOAL
+        w_depth = config.W_DEPTH
+
     salience = (
-        config.W_EMOTIONAL * emotional_intensity +
-        config.W_NOVELTY * novelty +
-        config.W_GOAL * goal_relevance +
-        config.W_DEPTH * processing_depth
+        w_emotional * emotional_intensity +
+        w_novelty * novelty +
+        w_goal * goal_relevance +
+        w_depth * processing_depth
     )
-    
+
     return clamp(salience, 0.0, 1.0)
 
 
@@ -171,13 +190,13 @@ def calculate_goal_relevance(
     if config is None:
         config = SalienceConfig()
     
-    # No active goals = moderate relevance (not penalized)
+    # No active goals = low relevance (creates headroom for goal-relevant fragments)
     if not active_goals or len(active_goals) == 0:
-        return 0.5
-    
+        return 0.3
+
     # Check semantic content
     if "semantic" not in content:
-        return 0.5
+        return 0.3
     
     # Simple keyword matching for now
     # (Could be enhanced with semantic similarity in future)
@@ -204,13 +223,14 @@ def calculate_salience_for_fragment(
     processing_depth: float,
     active_goals: List[str],
     store: FragmentStore,
-    config: Optional[SalienceConfig] = None
+    config: Optional[SalienceConfig] = None,
+    weight_learner: Optional['SalienceWeightLearner'] = None
 ) -> float:
     """
     Calculate salience for a fragment - complete pipeline.
-    
+
     This is the main entry point for salience calculation.
-    
+
     Args:
         content: Fragment content
         emotional_features: Emotional state
@@ -218,7 +238,8 @@ def calculate_salience_for_fragment(
         active_goals: Active goals
         store: Fragment store
         config: Optional custom configuration
-        
+        weight_learner: Optional weight learner with adaptive weights
+
     Returns:
         Salience score (0-1)
     """
@@ -226,14 +247,15 @@ def calculate_salience_for_fragment(
     emotional_intensity = calculate_emotional_intensity(emotional_features)
     novelty = calculate_novelty(content, store, config)
     goal_relevance = calculate_goal_relevance(content, active_goals, config)
-    
-    # Combine into final salience
+
+    # Combine into final salience (use learned weights if available)
     salience = calculate_encoding_salience(
         emotional_intensity=emotional_intensity,
         novelty=novelty,
         goal_relevance=goal_relevance,
         processing_depth=processing_depth,
-        config=config
+        config=config,
+        weight_learner=weight_learner
     )
     
     return salience

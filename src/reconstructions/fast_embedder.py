@@ -82,27 +82,40 @@ def _init_session():
 
     import onnxruntime as ort
     from transformers import AutoTokenizer
-
-    # Select best provider
-    providers = []
-    available = ort.get_available_providers()
-
-    if "CUDAExecutionProvider" in available:
-        providers.append("CUDAExecutionProvider")
-        _backend = "CUDAExecutionProvider"
-    if "CoreMLExecutionProvider" in available:
-        providers.append("CoreMLExecutionProvider")
-        if _backend is None:
-            _backend = "CoreMLExecutionProvider"
-    providers.append("CPUExecutionProvider")
-    if _backend is None:
-        _backend = "CPUExecutionProvider"
+    import warnings
 
     # Load model
     model_path = _get_model_path()
     model_dir = model_path.parent
 
-    _onnx_session = ort.InferenceSession(str(model_path), providers=providers)
+    # Try providers in order of preference, falling back if they fail
+    provider_candidates = []
+    available = ort.get_available_providers()
+
+    if "CUDAExecutionProvider" in available:
+        provider_candidates.append(("CUDAExecutionProvider", "CUDA"))
+    # Skip CoreML - it's unreliable on many systems and causes errors
+    # Just use CPU which is fast enough for our embeddings
+    provider_candidates.append(("CPUExecutionProvider", "CPU"))
+
+    # Try each provider until one works
+    for providers, backend_name in provider_candidates:
+        try:
+            # Suppress ONNX warnings during session creation
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning)
+                _onnx_session = ort.InferenceSession(
+                    str(model_path),
+                    providers=[providers] if isinstance(providers, str) else providers
+                )
+            _backend = backend_name
+            break
+        except Exception:
+            continue
+
+    if _onnx_session is None:
+        raise RuntimeError("Failed to initialize ONNX session with any provider")
+
     _tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
 
 
