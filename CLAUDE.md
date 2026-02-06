@@ -20,23 +20,26 @@ Memory is **reconstructed, not retrieved**. Each recall assembles fragments weig
 | **ConsolidationScheduler** | `consolidation.py` | Autonomous reconstruction and pattern discovery |
 | **MemoryHealthMonitor** | `health.py` | System health tracking and diagnostics |
 | **RetrievalQualityTracker** | `metrics.py` | Query performance metrics and trend analysis |
+| **MemoryLLMClient** | `llm_client.py` | Optional Ollama integration for reranking, compression, synthesis |
 | **MCP Server** | `mcp_server.py` | Claude Code integration via MCP protocol |
 
 ## Architecture Flow
 
 ```
-Experience → Encoding Pipeline → Fragment (SQLite + VectorIndex)
-                                      ↓
+Experience → Encoding Pipeline → [LLM compress] → Fragment (SQLite + VectorIndex)
+                                  (optional)            ↓
+                                                  stored as content["summary"]
+
 Query → Reconstruction Engine → Strand (assembled memory)
         (spread activation,           ↓
-         select candidates,     Certainty Tracking
-         fill gaps,                   ↓
-         assemble)             Identity State
-              ↑
-              │
-   Consolidation Scheduler
-   (autonomous reconstruction,
-    pattern discovery,
+         select candidates,     [LLM rerank]  → filtered candidates
+         fill gaps,              (optional)          ↓
+         assemble)                            Certainty Tracking
+              ↑                                      ↓
+              │                              [LLM synthesize] → strand.synthesis
+   Consolidation Scheduler                    (optional)
+   (autonomous reconstruction,                       ↓
+    pattern discovery,                        Identity State
     binding strengthening)
 ```
 
@@ -204,6 +207,69 @@ metric = tracker.log_query(query, result_strand, latency_ms=125.5)
 snapshot = tracker.get_snapshot(hours=24)
 impact = tracker.consolidation_impact_analysis()  # Before/after comparison
 ```
+
+## LLM-Enhanced Reconstruction
+
+Optional integration with a local LLM (Ollama) adds semantic intelligence at three points in the reconstruction loop. All features degrade gracefully when Ollama is unavailable — the system falls back to pure algorithmic behavior.
+
+### Setup
+
+Requires [Ollama](https://ollama.com) running locally with a model pulled:
+
+```bash
+ollama pull gemma3:4b
+```
+
+### Configuration
+
+```python
+from reconstructions import LLMConfig, ReconstructionEngine, FragmentStore
+
+config = LLMConfig(
+    base_url="http://localhost:11434",
+    model="gemma3:4b",
+    enable_reranking=True,       # Filter irrelevant candidates
+    enable_compression=True,     # Summarize experiences at encoding time
+    enable_synthesis=True,       # Generate narrative from reconstructed fragments
+    rerank_min_score=3,          # 0-10, filter below this
+    rerank_temperature=0.1,
+    compress_temperature=0.3,
+    synthesis_temperature=0.5,
+    availability_cache_ttl=60.0, # Cache Ollama availability check
+)
+
+store = FragmentStore("memory.db")
+engine = ReconstructionEngine(store, llm_config=config)
+```
+
+### Feature 1: Reranking
+
+After spreading activation selects candidates, the LLM scores each fragment's relevance to the query on a 0-10 scale. Fragments below `rerank_min_score` are filtered out, and the rest are sorted by score.
+
+**Impact**: Query for "RTMP streaming" no longer returns grocery-list fragments that happen to have similar embeddings. Typical reduction from 10 candidates to 4-8 relevant ones.
+
+### Feature 2: Compression
+
+During encoding, long experience text is summarized into 1-2 sentences. The summary is stored in `content["summary"]` alongside the raw `content["text"]`, and the summary embedding is used for similarity search instead of the raw text.
+
+**Impact**: Cleaner embeddings that capture intent rather than syntax noise (file paths, command flags).
+
+### Feature 3: Synthesis
+
+After reconstruction, fragment texts are combined into a 2-5 sentence narrative stored in `strand.synthesis`. Uncertainty is expressed proportional to coherence score — low coherence gets hedged language, high coherence gets confident statements.
+
+**Impact**: Query results include a human-readable summary instead of just a list of fragment IDs.
+
+### Latency
+
+| Operation | With LLM | Without LLM |
+|-----------|----------|-------------|
+| Encode    | ~1-2s    | ~20ms       |
+| Query     | ~8-15s   | ~20-60ms    |
+
+### Graceful Degradation
+
+Pass `llm_config=None` (or omit it) to disable all LLM features. If Ollama is running but the model is unavailable, each operation returns the fallback result (unchanged candidates, no summary, no synthesis) with zero impact on existing behavior.
 
 ## Adaptive Intelligence (Phase 2)
 
@@ -450,7 +516,8 @@ reconstructions/
 ├── bindings.py       # Fragment linking (temporal, semantic)
 ├── store.py          # SQLite FragmentStore
 ├── vector_index.py   # USearch HNSW vector index
-├── reconstruction.py # Core retrieval engine (spread activation, assembly)
+├── reconstruction.py # Core retrieval engine (spread activation, assembly, LLM rerank/synthesis)
+├── llm_client.py     # Optional Ollama LLM client (reranking, compression, synthesis)
 ├── consolidation.py  # Autonomous reconstruction and pattern discovery
 ├── certainty.py      # Variance tracking for subjective certainty
 ├── identity.py       # Trait, Belief, Goal, IdentityEvolver
@@ -470,6 +537,7 @@ reconstructions/
 - **numpy** - Numerical computing
 - **onnxruntime** - Fast inference (all-MiniLM-L6-v2 embeddings, 384-dim)
 - **usearch** - HNSW vector search
+- **requests** - HTTP client for Ollama LLM API
 - **mcp** - Model Context Protocol integration
 - **sentence-transformers** - Fallback embeddings
 

@@ -8,6 +8,7 @@ This module implements the core reconstruction algorithms:
 - Gap filling for missing information
 """
 
+import logging
 import numpy as np
 from typing import Optional, List, Tuple, Dict
 from dataclasses import dataclass, field
@@ -17,6 +18,9 @@ from .core import Fragment, Strand, Query
 from .store import FragmentStore
 from .strength import calculate_strength
 from .features import extract_semantic_features
+from .llm_client import LLMConfig, MemoryLLMClient, get_llm_client
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -401,6 +405,186 @@ def fill_gaps(
     return fragments
 
 
+def llm_rerank(
+    candidates: List[Fragment],
+    query: Query,
+    llm_config: LLMConfig,
+) -> List[Fragment]:
+    """
+    Rerank candidate fragments using an LLM for semantic relevance.
+
+    Sends fragment texts and the query to the LLM, which scores each
+    fragment 0-10. Fragments below rerank_min_score are filtered out.
+
+    On any failure, returns candidates unchanged (graceful degradation).
+
+    Args:
+        candidates: Fragments to rerank
+        query: The reconstruction query
+        llm_config: LLM configuration
+
+    Returns:
+        Reranked and filtered list of fragments
+    """
+    if not candidates or not query.semantic:
+        return candidates
+
+    client = get_llm_client(llm_config)
+    if not client.is_available():
+        return candidates
+
+    # Build numbered list of fragment texts
+    fragment_lines = []
+    for i, frag in enumerate(candidates):
+        text = frag.content.get("text", "")
+        if not text:
+            text = frag.content.get("semantic", "")
+            if isinstance(text, list):
+                text = "[embedding]"
+        # Truncate long texts
+        if len(str(text)) > 200:
+            text = str(text)[:200] + "..."
+        fragment_lines.append(f"{i + 1}. {text}")
+
+    fragments_text = "\n".join(fragment_lines)
+
+    prompt = (
+        f"Query: {query.semantic}\n\n"
+        f"Memory fragments:\n{fragments_text}\n\n"
+        f"Score each fragment's relevance to the query on a 0-10 scale.\n"
+        f"Return ONLY a JSON array: [{{\"index\": 1, \"score\": 8}}, ...]\n"
+        f"Include ALL fragments. Be strict — irrelevant fragments get 0-2."
+    )
+
+    system = (
+        "You are a memory relevance scorer. Given a query and memory fragments, "
+        "score each fragment's relevance. Return only valid JSON."
+    )
+
+    result = client.generate_json(
+        prompt=prompt,
+        system=system,
+        temperature=llm_config.rerank_temperature,
+        timeout=llm_config.rerank_timeout,
+    )
+
+    if not result.success or not isinstance(result.parsed, list):
+        logger.debug("LLM rerank failed: %s", result.error)
+        return candidates
+
+    # Build index→score mapping
+    scores: Dict[int, int] = {}
+    for item in result.parsed:
+        if isinstance(item, dict) and "index" in item and "score" in item:
+            try:
+                idx = int(item["index"]) - 1  # Convert to 0-based
+                score = int(item["score"])
+                if 0 <= idx < len(candidates):
+                    scores[idx] = score
+            except (ValueError, TypeError):
+                continue
+
+    # Filter by minimum score and sort by score descending
+    reranked = []
+    for idx, frag in enumerate(candidates):
+        score = scores.get(idx, llm_config.rerank_min_score)  # Default: keep if unscored
+        if score >= llm_config.rerank_min_score:
+            reranked.append((score, idx, frag))
+
+    reranked.sort(key=lambda x: (-x[0], x[1]))
+
+    if not reranked:
+        # Don't filter everything out — return original
+        return candidates
+
+    return [frag for _, _, frag in reranked]
+
+
+def synthesize_narrative(
+    fragments: List[Fragment],
+    query: Query,
+    coherence: float,
+    llm_config: LLMConfig,
+) -> Optional[str]:
+    """
+    Synthesize a natural language narrative from reconstructed fragments.
+
+    Creates a 2-5 sentence summary that expresses uncertainty proportional
+    to the coherence score. Never fabricates details not in the fragments.
+
+    Args:
+        fragments: Assembled fragments
+        query: The reconstruction query
+        coherence: Coherence score (0-1)
+        llm_config: LLM configuration
+
+    Returns:
+        Narrative string, or None on failure
+    """
+    if not fragments:
+        return None
+
+    client = get_llm_client(llm_config)
+    if not client.is_available():
+        return None
+
+    # Build fragment texts
+    fragment_texts = []
+    for frag in fragments:
+        text = frag.content.get("text", "")
+        if not text:
+            text = frag.content.get("semantic", "")
+            if isinstance(text, list):
+                continue  # Skip embedding-only fragments
+        if text:
+            # Truncate very long texts
+            if len(str(text)) > 300:
+                text = str(text)[:300] + "..."
+            fragment_texts.append(str(text))
+
+    if not fragment_texts:
+        return None
+
+    fragments_block = "\n---\n".join(fragment_texts)
+
+    coherence_guidance = ""
+    if coherence < 0.3:
+        coherence_guidance = "Express HIGH uncertainty. These memories are fragmented and may not be connected."
+    elif coherence < 0.6:
+        coherence_guidance = "Express MODERATE uncertainty. Some connections exist but the picture is incomplete."
+    else:
+        coherence_guidance = "Express reasonable confidence, but note any gaps."
+
+    query_text = query.semantic or "general recall"
+
+    prompt = (
+        f"Query: {query_text}\n"
+        f"Coherence: {coherence:.2f}\n\n"
+        f"Memory fragments:\n{fragments_block}\n\n"
+        f"Synthesize these fragments into a 2-5 sentence narrative. "
+        f"{coherence_guidance} "
+        f"NEVER fabricate details not present in the fragments."
+    )
+
+    system = (
+        "You are a memory synthesis engine. Combine memory fragments into "
+        "a coherent narrative. Be concise and faithful to the source fragments."
+    )
+
+    result = client.generate(
+        prompt=prompt,
+        system=system,
+        temperature=llm_config.synthesis_temperature,
+        timeout=llm_config.synthesis_timeout,
+    )
+
+    if result.success and result.content:
+        return result.content
+
+    logger.debug("LLM synthesis failed: %s", result.error)
+    return None
+
+
 from .certainty import VarianceController
 
 def reconstruct(
@@ -408,64 +592,76 @@ def reconstruct(
     store: FragmentStore,
     variance_target: float = 0.3,
     config: Optional[ReconstructionConfig] = None,
-    variance_controller: Optional[VarianceController] = None
+    variance_controller: Optional[VarianceController] = None,
+    llm_config: Optional[LLMConfig] = None
 ) -> Strand:
     """
     Reconstruct memory from query.
-    
+
     This is THE reconstruction function - the core of the system.
-    
+
     Args:
         query: Query to reconstruct
         store: Fragment store
         variance_target: Target variance (0=deterministic, 1=random)
         config: Optional configuration
         variance_controller: Optional controller for tracking certainty
-        
+        llm_config: Optional LLM configuration for reranking and synthesis
+
     Returns:
         Reconstructed strand
     """
     if config is None:
         config = ReconstructionConfig()
-    
+
     # Step 1: Spread activation
     activation = spread_activation(query, store, config)
-    
+
     # Step 2: Select candidates
     candidates = select_candidates(activation, store, variance_target, config)
-    
+
+    # Step 2.5: LLM reranking (optional)
+    if llm_config and llm_config.enable_reranking and candidates:
+        candidates = llm_rerank(candidates, query, llm_config)
+
     # Step 3: Fill gaps
     filled = fill_gaps(candidates, {"query": query}, config)
-    
+
     # Step 4: Assemble
     assembly_context = {
         "query": query.semantic if query.semantic else "",
         "variance": variance_target
     }
     assembled = assemble_fragments(filled, assembly_context)
-    
+
     # Step 5: Calculate coherence
     coherence = calculate_coherence(filled)
-    
+
+    # Step 5.5: LLM synthesis (optional)
+    synthesis = None
+    if llm_config and llm_config.enable_synthesis and filled:
+        synthesis = synthesize_narrative(filled, query, coherence, llm_config)
+
     # Step 6: Create strand
     certainty = 0.0
-    
+
     # Calculate initial strand (needed for variance calculation)
     strand = Strand(
         fragments=[f.id for f in filled],
         assembly_context=assembly_context,
         coherence_score=coherence,
         variance=variance_target,
-        certainty=0.0  # Placeholder
+        certainty=0.0,  # Placeholder
+        synthesis=synthesis
     )
-    
+
     # Calculate certainty if controller available
     if variance_controller:
         query_hash = query.to_hash()
         variance_controller.record_reconstruction(query_hash, strand)
         certainty = variance_controller.get_certainty(query_hash)
         strand.certainty = certainty
-    
+
     # Record access for rehearsal (batch update instead of N individual get+save)
     import time as time_module
     now = time_module.time()

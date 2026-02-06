@@ -13,6 +13,7 @@ from .store import FragmentStore
 from .engine import ReconstructionEngine
 from .health import MemoryHealthMonitor, format_health_report
 from .consolidation import ConsolidationConfig
+from .llm_client import LLMConfig
 
 
 class MemoryServer:
@@ -23,12 +24,13 @@ class MemoryServer:
     with the memory system.
     """
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, llm_config: Optional[LLMConfig] = None):
         """
         Initialize memory server.
 
         Args:
             db_path: Path to database file
+            llm_config: Optional LLM configuration for enhanced reconstruction
         """
         self.db_path = db_path
         self.store = FragmentStore(str(db_path))
@@ -36,13 +38,14 @@ class MemoryServer:
         # Initialize health monitoring
         self.health_monitor = MemoryHealthMonitor(self.store, db_path.parent)
 
-        # Initialize engine with health monitoring
+        # Initialize engine with health monitoring and LLM config
         consolidation_config = ConsolidationConfig()
         self.engine = ReconstructionEngine(
             self.store,
             enable_consolidation=True,
             consolidation_config=consolidation_config,
-            health_monitor=self.health_monitor
+            health_monitor=self.health_monitor,
+            llm_config=llm_config
         )
 
         self.context = Context()
@@ -169,11 +172,14 @@ class MemoryServer:
                                 "created_at": fragment.created_at
                             })
 
-                return {
+                result_dict = {
                     "fragments": fragments,
                     "certainty": certainty,
                     "strand_id": strand.id if strand else None
                 }
+                if strand and strand.synthesis:
+                    result_dict["synthesis"] = strand.synthesis
+                return result_dict
 
             return {
                 "fragments": [],
@@ -307,13 +313,20 @@ class MemoryServer:
 
 
 # MCP protocol wrapper (for actual MCP integration)
-def create_mcp_server(db_path: str = "~/.reconstructions/memory.db"):
+def create_mcp_server(
+    db_path: str = "~/.reconstructions/memory.db",
+    llm_config: Optional[LLMConfig] = None
+):
     """
     Create MCP-compatible server.
 
     This can be used with the mcp library to expose tools.
+
+    Args:
+        db_path: Path to database file
+        llm_config: Optional LLM configuration for enhanced reconstruction
     """
     path = Path(db_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    return MemoryServer(path)
+    return MemoryServer(path, llm_config=llm_config)

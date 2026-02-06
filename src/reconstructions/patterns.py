@@ -113,6 +113,16 @@ class ProjectPattern:
         )
 
 
+def _get_fragment_text(fragment: Fragment) -> str:
+    """Get readable text from a fragment, preferring summary over raw text."""
+    text = fragment.content.get("summary", "") or fragment.content.get("text", "")
+    if not text:
+        semantic = fragment.content.get("semantic", "")
+        if isinstance(semantic, str):
+            text = semantic
+    return text
+
+
 class CrossSessionPatternDetector:
     """Discovers recurring patterns across sessions."""
 
@@ -206,10 +216,9 @@ class CrossSessionPatternDetector:
         # Extract operation keywords from fragments
         operations = []
         for fragment in all_fragments:
-            semantic = fragment.content.get("semantic", "")
-            if isinstance(semantic, str):
-                # Extract key action words
-                keywords = self._extract_keywords(semantic)
+            text = _get_fragment_text(fragment)
+            if text:
+                keywords = self._extract_keywords(text)
                 if keywords:
                     operations.append((keywords[0], fragment))  # Use first keyword
 
@@ -259,14 +268,19 @@ class CrossSessionPatternDetector:
         """
         patterns = []
 
-        # Get all fragments with semantic content
+        # Get all fragments with embeddings
         all_fragments = self.store.get_all_fragments()
         semantic_fragments = []
         embeddings = []
 
         for fragment in all_fragments:
-            semantic = fragment.content.get("semantic", "")
-            if semantic and isinstance(semantic, str):
+            semantic = fragment.content.get("semantic")
+            if semantic and isinstance(semantic, list):
+                # Use the stored embedding directly
+                semantic_fragments.append(fragment)
+                embeddings.append(np.array(semantic, dtype=np.float32))
+            elif semantic and isinstance(semantic, str):
+                # Legacy format: semantic is raw text, compute embedding
                 embedding = extract_semantic_features(semantic)
                 if embedding is not None:
                     semantic_fragments.append(fragment)
@@ -319,9 +333,9 @@ class CrossSessionPatternDetector:
         """Extract common themes from fragments."""
         keywords = []
         for fragment in fragments:
-            semantic = fragment.content.get("semantic", "")
-            if isinstance(semantic, str):
-                keywords.extend(self._extract_keywords(semantic))
+            text = _get_fragment_text(fragment)
+            if text:
+                keywords.extend(self._extract_keywords(text))
 
         # Count most common
         if not keywords:
@@ -344,9 +358,9 @@ class CrossSessionPatternDetector:
         """Extract representative keywords from cluster."""
         all_text = []
         for fragment in fragments:
-            semantic = fragment.content.get("semantic", "")
-            if isinstance(semantic, str):
-                all_text.append(semantic.lower())
+            text = _get_fragment_text(fragment)
+            if text:
+                all_text.append(text.lower())
 
         combined = " ".join(all_text)
         words = combined.split()

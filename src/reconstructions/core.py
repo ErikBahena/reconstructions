@@ -98,6 +98,7 @@ class Strand:
     coherence_score: float = 0.0  # How internally consistent (0-1)
     variance: float = 0.0  # Reconstruction stability measure (target variance)
     certainty: float = 0.0  # Calculated subjective certainty (0-1)
+    synthesis: Optional[str] = None  # LLM-generated narrative summary
     created_at: float = field(default_factory=time.time)
     
     def to_dict(self) -> dict[str, Any]:
@@ -107,12 +108,12 @@ class Strand:
             "fragments": self.fragments,
             "assembly_context": self.assembly_context,
             "coherence_score": self.coherence_score,
-            "coherence_score": self.coherence_score,
             "variance": self.variance,
             "certainty": self.certainty,
+            "synthesis": self.synthesis,
             "created_at": self.created_at
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Strand":
         """Deserialize strand from dictionary."""
@@ -123,6 +124,7 @@ class Strand:
             coherence_score=data["coherence_score"],
             variance=data["variance"],
             certainty=data.get("certainty", 0.0),
+            synthesis=data.get("synthesis"),
             created_at=data["created_at"]
         )
 

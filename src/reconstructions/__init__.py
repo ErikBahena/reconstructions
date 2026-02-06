@@ -15,6 +15,7 @@ from .engine import ReconstructionEngine
 from .consolidation import ConsolidationScheduler, ConsolidationConfig
 from .health import MemoryHealthMonitor, MemoryHealthReport, format_health_report
 from .metrics import RetrievalQualityTracker, QueryMetric, RetrievalQualitySnapshot
+from .llm_client import LLMConfig, LLMResult, MemoryLLMClient, get_llm_client
 
 # Claude Code integration
 from . import claude_code
@@ -40,6 +41,11 @@ __all__ = [
     "RetrievalQualityTracker",
     "QueryMetric",
     "RetrievalQualitySnapshot",
+    # LLM Integration
+    "LLMConfig",
+    "LLMResult",
+    "MemoryLLMClient",
+    "get_llm_client",
     # Claude Code
     "claude_code",
 ]

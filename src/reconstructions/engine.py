@@ -24,6 +24,7 @@ from .consolidation import ConsolidationScheduler, ConsolidationConfig
 from .health import MemoryHealthMonitor
 from .learning import SalienceWeightLearner
 from .patterns import CrossSessionPatternDetector
+from .llm_client import LLMConfig
 
 
 class GoalType(Enum):
@@ -122,11 +123,13 @@ class ReconstructionEngine:
         consolidation_config: Optional[ConsolidationConfig] = None,
         enable_consolidation: bool = True,
         health_monitor: Optional[MemoryHealthMonitor] = None,
-        enable_weight_learning: bool = True
+        enable_weight_learning: bool = True,
+        llm_config: Optional[LLMConfig] = None
     ):
         self.store = store
         self.identity_store = identity_store or IdentityStore()
         self.config = config or ReconstructionConfig()
+        self.llm_config = llm_config
 
         self.goal_queue = GoalQueue()
         self.context = Context()
@@ -265,7 +268,8 @@ class ReconstructionEngine:
             self.store,
             variance_target=0.3,
             config=self.config,
-            variance_controller=self.variance_controller
+            variance_controller=self.variance_controller,
+            llm_config=self.llm_config
         )
 
         # Log query metrics
@@ -311,7 +315,8 @@ class ReconstructionEngine:
             self.context,
             self.store,
             identity_state=self.active_identity,
-            weight_learner=self.weight_learner
+            weight_learner=self.weight_learner,
+            llm_config=self.llm_config
         )
 
         # Record encoding for adaptive scheduling

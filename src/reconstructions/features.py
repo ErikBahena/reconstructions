@@ -2,9 +2,17 @@
 Feature extraction functions for encoding experiences.
 """
 
+import logging
 import numpy as np
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from .encoding import Experience, Context
+
+if TYPE_CHECKING:
+    from .llm_client import LLMConfig
+
+from .llm_client import get_llm_client
+
+logger = logging.getLogger(__name__)
 
 
 # Global embedder (lazy loaded)
@@ -154,7 +162,53 @@ def extract_temporal_features(context: Context) -> dict[str, float]:
     }
 
 
-def extract_all_features(experience: Experience, context: Context) -> dict:
+def compress_text_with_llm(raw_text: str, llm_config: 'LLMConfig') -> Optional[str]:
+    """
+    Compress raw experience text into a concise summary using an LLM.
+
+    Produces a 1-2 sentence summary focusing on WHAT was done and WHY,
+    stripping file paths, command syntax, and other noise.
+
+    Args:
+        raw_text: Raw experience text to compress
+        llm_config: LLM configuration
+
+    Returns:
+        Compressed summary string, or None on failure
+    """
+    if not raw_text or len(raw_text.strip()) < 20:
+        return None  # Too short to compress
+
+    client = get_llm_client(llm_config)
+    if not client.is_available():
+        return None
+
+    prompt = (
+        f"Text:\n{raw_text[:500]}\n\n"
+        f"Summarize this developer activity in 1-2 concise sentences. "
+        f"Focus on WHAT was done and WHY, not file paths or command syntax."
+    )
+
+    system = (
+        "You are a memory compression engine. Produce concise, information-dense "
+        "summaries. Strip noise, keep meaning. Reply with ONLY the summary."
+    )
+
+    result = client.generate(
+        prompt=prompt,
+        system=system,
+        temperature=llm_config.compress_temperature,
+        timeout=llm_config.compress_timeout,
+    )
+
+    if result.success and result.content:
+        return result.content
+
+    logger.debug("LLM compression failed: %s", result.error)
+    return None
+
+
+def extract_all_features(experience: Experience, context: Context, llm_config: Optional['LLMConfig'] = None) -> dict:
     """
     Extract all features from an experience.
 
@@ -163,6 +217,7 @@ def extract_all_features(experience: Experience, context: Context) -> dict:
     Args:
         experience: Experience to extract features from
         context: Current context
+        llm_config: Optional LLM config for text compression
 
     Returns:
         Dictionary mapping domain names to features
@@ -173,8 +228,17 @@ def extract_all_features(experience: Experience, context: Context) -> dict:
     if experience.has_text:
         # Store original text for retrieval
         features["text"] = experience.text
+        text_to_embed = experience.text
+
+        # LLM compression: create summary and embed that instead
+        if llm_config and llm_config.enable_compression:
+            summary = compress_text_with_llm(experience.text, llm_config)
+            if summary:
+                features["summary"] = summary
+                text_to_embed = summary
+
         # Store embedding for similarity search
-        embedding = extract_semantic_features(experience.text)
+        embedding = extract_semantic_features(text_to_embed)
         if embedding is not None:
             features["semantic"] = embedding.tolist()
     

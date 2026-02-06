@@ -15,6 +15,7 @@ from .bindings import create_bindings, update_bidirectional_bindings
 if TYPE_CHECKING:
     from .learning import SalienceWeightLearner
     from .identity import ActiveIdentityState
+    from .llm_client import LLMConfig
 
 
 def encode(
@@ -23,7 +24,8 @@ def encode(
     store: FragmentStore,
     create_semantic_bindings: bool = False,
     identity_state: Optional['ActiveIdentityState'] = None,
-    weight_learner: Optional['SalienceWeightLearner'] = None
+    weight_learner: Optional['SalienceWeightLearner'] = None,
+    llm_config: Optional['LLMConfig'] = None
 ) -> Fragment:
     """
     Encode an experience into a fragment.
@@ -44,13 +46,14 @@ def encode(
         create_semantic_bindings: Whether to create semantic bindings (expensive)
         identity_state: Optional active identity state for relevance boosting
         weight_learner: Optional weight learner for adaptive salience calculation
+        llm_config: Optional LLM config for text compression during encoding
 
     Returns:
         Encoded fragment
     """
 
-    # 1. EXTRACT FEATURES
-    content = extract_all_features(experience, context)
+    # 1. EXTRACT FEATURES (with optional LLM compression)
+    content = extract_all_features(experience, context, llm_config=llm_config)
 
     # 2. CALCULATE BASE SALIENCE (using learned weights if available)
     emotional_features = content.get("emotional", {

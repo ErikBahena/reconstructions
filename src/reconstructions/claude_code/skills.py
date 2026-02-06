@@ -125,7 +125,8 @@ def _recall(query_text: str) -> dict[str, Any]:
             for frag_id in strand.fragments[:10]:  # Limit to 10
                 fragment = session.store.get(frag_id)
                 if fragment:
-                    content = fragment.content.get("text", "")
+                    # Prefer summary over raw text
+                    content = fragment.content.get("summary", "") or fragment.content.get("text", "")
                     if not content:
                         semantic = fragment.content.get("semantic")
                         if isinstance(semantic, str):
@@ -140,12 +141,15 @@ def _recall(query_text: str) -> dict[str, Any]:
                         "age_hours": round((time.time() - fragment.created_at) / 3600, 1)
                     })
 
-        return {
+        result_dict = {
             "success": True,
             "fragments": fragments,
             "certainty": round(certainty, 3),
             "strand_id": strand.id if strand else None
         }
+        if strand and strand.synthesis:
+            result_dict["synthesis"] = strand.synthesis
+        return result_dict
 
     return {"success": False, "fragments": [], "certainty": 0.0}
 
@@ -487,6 +491,9 @@ def format_output(result: dict[str, Any]) -> str:
         if not fragments:
             output_lines.append("No memories found")
         else:
+            if "synthesis" in result:
+                output_lines.append(f"Synthesis: {result['synthesis']}")
+                output_lines.append("")
             if "certainty" in result:
                 output_lines.append(f"Certainty: {result['certainty']}")
             output_lines.append(f"Found {len(fragments)} memories:")
@@ -565,6 +572,11 @@ def _print_recall_result(result):
     if not fragments:
         print("No memories found")
         return
+
+    # Show synthesis if available
+    synthesis = result.get("synthesis")
+    if synthesis:
+        print(f"\nSynthesis: {synthesis}\n")
 
     print(f"\nFound {len(fragments)} memories (certainty: {certainty:.2f}):\n")
     for i, frag in enumerate(fragments, 1):
