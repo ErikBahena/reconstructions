@@ -250,7 +250,7 @@ def _consolidate(args: str = "") -> dict[str, Any]:
         return {"error": f"Consolidation failed: {str(e)}"}
 
 
-def _identity() -> dict[str, Any]:
+def _identity(args: str = "") -> dict[str, Any]:
     """
     Get current identity model.
 

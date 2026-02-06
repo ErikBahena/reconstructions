@@ -56,8 +56,8 @@ class TestMCPTools:
 
         result = memory_server.memory_status()
 
-        assert result["fragment_count"] >= 1
-        assert "health" in result
+        assert result["fragments"]["total"] >= 1
+        assert result["status"] == "ok"
 
     def test_store_and_recall_roundtrip(self, memory_server):
         """Stored memories can be recalled."""
