@@ -40,6 +40,7 @@ class ConsolidationConfig:
     # Pattern discovery
     PATTERN_DISCOVERY_INTERVAL: int = 10  # Every N consolidations
     SEMANTIC_SIMILARITY_THRESHOLD: float = 0.6  # Min similarity to bind
+    MAX_PATTERN_DISCOVERY_FRAGMENTS: int = 50  # Cap fragments to prevent hangs on large DBs
 
     # Binding strengthening
     BINDING_STRENGTH_BOOST: float = 0.1  # Boost per co-activation
@@ -383,6 +384,10 @@ class ConsolidationScheduler:
 
         if len(recent) < 2:
             return discovered
+
+        # Cap to prevent hangs on large databases (1000+ recent fragments)
+        if len(recent) > self.config.MAX_PATTERN_DISCOVERY_FRAGMENTS:
+            recent = recent[:self.config.MAX_PATTERN_DISCOVERY_FRAGMENTS]
 
         # For each recent fragment, find its nearest neighbors via VectorIndex
         seen_pairs: Set[Tuple[str, str]] = set()
